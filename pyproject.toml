@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aech-cli-visualize"
+version = "0.1.0"
+description = "Render charts, KPIs, tables, and dashboards to presentation-ready images"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.9.0",
+    "plotly>=5.18.0",
+    "kaleido>=0.2.1",
+    "pandas>=2.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.scripts]
+aech-cli-visualize = "aech_cli_visualize.main:run"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
