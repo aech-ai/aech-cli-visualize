@@ -1,0 +1,263 @@
+{
+  "spec_version": 4,
+  "name": "visualize",
+  "type": "cli",
+  "command": "aech-cli-visualize",
+  "description": "Render charts, KPIs, tables, and dashboards to presentation-ready images. Input: JSON data or specification files. Output: PNG/SVG/PDF images sized for presentations (16:9 aspect ratio by default).",
+  "actions": [
+    {
+      "name": "chart",
+      "description": "Render a chart from data. Input: JSON with x/y values or series data, via file or stdin. Output: chart image at <output-dir>/chart.<format>. Use when user needs a visual chart from numeric data.",
+      "parameters": [
+        {
+          "name": "chart_type",
+          "type": "argument",
+          "required": true,
+          "description": "Chart type. Values: bar, line, pie, scatter, area, heatmap."
+        },
+        {
+          "name": "data_file",
+          "type": "argument",
+          "required": false,
+          "description": "Path to JSON data file. If omitted, reads from stdin."
+        },
+        {
+          "name": "output-dir",
+          "type": "option",
+          "required": true,
+          "description": "Directory where output image will be written."
+        },
+        {
+          "name": "title",
+          "type": "option",
+          "required": false,
+          "description": "Chart title displayed at top."
+        },
+        {
+          "name": "theme",
+          "type": "option",
+          "required": false,
+          "description": "Visual theme. Values: corporate, modern, minimal, dark, light. Default: corporate."
+        },
+        {
+          "name": "format",
+          "type": "option",
+          "required": false,
+          "description": "Output format. Values: png, svg, pdf. Default: png."
+        }
+      ]
+    },
+    {
+      "name": "kpi",
+      "description": "Render a KPI metric card. Input: value and label via options. Output: KPI card image at <output-dir>/kpi.<format>. Use when user needs to highlight a key metric with optional trend indicator.",
+      "parameters": [
+        {
+          "name": "value",
+          "type": "option",
+          "required": true,
+          "description": "The metric value to display. Can be number or string."
+        },
+        {
+          "name": "label",
+          "type": "option",
+          "required": true,
+          "description": "Label describing the metric (e.g., 'Active Users', 'Revenue')."
+        },
+        {
+          "name": "output-dir",
+          "type": "option",
+          "required": true,
+          "description": "Directory where output image will be written."
+        },
+        {
+          "name": "delta",
+          "type": "option",
+          "required": false,
+          "description": "Change indicator (e.g., '+12%', '-5'). Colored green/red based on delta-good."
+        },
+        {
+          "name": "delta-good",
+          "type": "option",
+          "required": false,
+          "description": "Whether positive delta is good. Values: true, false. Default: true. Use --delta-good or --delta-bad."
+        },
+        {
+          "name": "format-value",
+          "type": "option",
+          "required": false,
+          "description": "Python format string for value. Examples: {:,.0f} for thousands, ${:,.2f} for currency."
+        },
+        {
+          "name": "theme",
+          "type": "option",
+          "required": false,
+          "description": "Visual theme. Values: corporate, modern, minimal, dark, light. Default: corporate."
+        },
+        {
+          "name": "format",
+          "type": "option",
+          "required": false,
+          "description": "Output format. Values: png, svg, pdf. Default: png."
+        }
+      ]
+    },
+    {
+      "name": "table",
+      "description": "Render a data table as an image. Input: JSON with headers and rows, via file or stdin. Output: table image at <output-dir>/table.<format>. Use when user needs tabular data as a shareable image.",
+      "parameters": [
+        {
+          "name": "data_file",
+          "type": "argument",
+          "required": false,
+          "description": "Path to JSON file with headers/rows. If omitted, reads from stdin."
+        },
+        {
+          "name": "output-dir",
+          "type": "option",
+          "required": true,
+          "description": "Directory where output image will be written."
+        },
+        {
+          "name": "title",
+          "type": "option",
+          "required": false,
+          "description": "Table title displayed above."
+        },
+        {
+          "name": "theme",
+          "type": "option",
+          "required": false,
+          "description": "Visual theme. Values: corporate, modern, minimal, dark, light. Default: corporate."
+        },
+        {
+          "name": "format",
+          "type": "option",
+          "required": false,
+          "description": "Output format. Values: png, svg, pdf. Default: png."
+        }
+      ]
+    },
+    {
+      "name": "gauge",
+      "description": "Render a gauge indicator. Input: value and range via options. Output: gauge image at <output-dir>/gauge.<format>. Use when user needs to show progress or status against a target.",
+      "parameters": [
+        {
+          "name": "value",
+          "type": "option",
+          "required": true,
+          "description": "Current value to display on gauge."
+        },
+        {
+          "name": "output-dir",
+          "type": "option",
+          "required": true,
+          "description": "Directory where output image will be written."
+        },
+        {
+          "name": "min",
+          "type": "option",
+          "required": false,
+          "description": "Minimum gauge value. Default: 0."
+        },
+        {
+          "name": "max",
+          "type": "option",
+          "required": false,
+          "description": "Maximum gauge value. Default: 100."
+        },
+        {
+          "name": "label",
+          "type": "option",
+          "required": false,
+          "description": "Label describing the metric."
+        },
+        {
+          "name": "thresholds",
+          "type": "option",
+          "required": false,
+          "description": "JSON array of threshold objects [{\"value\": 50, \"color\": \"red\", \"label\": \"Low\"}] for colored zones."
+        },
+        {
+          "name": "theme",
+          "type": "option",
+          "required": false,
+          "description": "Visual theme. Values: corporate, modern, minimal, dark, light. Default: corporate."
+        },
+        {
+          "name": "format",
+          "type": "option",
+          "required": false,
+          "description": "Output format. Values: png, svg, pdf. Default: png."
+        }
+      ]
+    },
+    {
+      "name": "dashboard",
+      "description": "Compose multiple widgets into a single dashboard image. Input: JSON specification with layout and widgets, via file or stdin. Output: dashboard image at <output-dir>/dashboard.<format>. Use when user needs a complete dashboard view with multiple metrics and charts.",
+      "parameters": [
+        {
+          "name": "spec_file",
+          "type": "argument",
+          "required": false,
+          "description": "Path to dashboard specification JSON. If omitted, reads from stdin."
+        },
+        {
+          "name": "output-dir",
+          "type": "option",
+          "required": true,
+          "description": "Directory where output image will be written."
+        },
+        {
+          "name": "theme",
+          "type": "option",
+          "required": false,
+          "description": "Visual theme applied to all widgets. Values: corporate, modern, minimal, dark, light. Default: corporate."
+        },
+        {
+          "name": "resolution",
+          "type": "option",
+          "required": false,
+          "description": "Output resolution. Values: 1080p (1920x1080), 4k (3840x2160), or WxH (e.g., 1280x720). Default: 1080p."
+        },
+        {
+          "name": "format",
+          "type": "option",
+          "required": false,
+          "description": "Output format. Values: png, svg, pdf. Default: png."
+        }
+      ]
+    }
+  ],
+  "available_in_sandbox": true,
+  "documentation": {
+    "outputs": {
+      "chart_image": {
+        "path": "<output-dir>/chart.<format>",
+        "description": "Rendered chart image"
+      },
+      "kpi_image": {
+        "path": "<output-dir>/kpi.<format>",
+        "description": "Rendered KPI card image"
+      },
+      "table_image": {
+        "path": "<output-dir>/table.<format>",
+        "description": "Rendered table image"
+      },
+      "gauge_image": {
+        "path": "<output-dir>/gauge.<format>",
+        "description": "Rendered gauge image"
+      },
+      "dashboard_image": {
+        "path": "<output-dir>/dashboard.<format>",
+        "description": "Composed dashboard image"
+      }
+    },
+    "notes": [
+      "All commands return JSON to stdout with output file paths",
+      "Default aspect ratio is 16:9 for presentation compatibility",
+      "Themes: corporate (blue/gray), modern (vibrant), minimal (B&W), dark, light",
+      "Data for charts: {\"x\": [...], \"y\": [...]} or {\"x\": [...], \"series\": [{\"name\": \"...\", \"values\": [...]}]}",
+      "Data for tables: {\"headers\": [...], \"rows\": [[...], [...]]}"
+    ]
+  }
+}
