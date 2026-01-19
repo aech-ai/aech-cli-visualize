@@ -32,6 +32,7 @@ ENV/
 
 # Test outputs
 test_outputs/
+tests/output/
 
 # OS
 .DS_Store
