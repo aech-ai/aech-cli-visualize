@@ -6,6 +6,7 @@ from typing import Any
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
+from ..model_utils import parse_model_string, get_model_settings
 from .fingerprint import analyze_field, compute_schema_fingerprint
 from .models import (
     AnalysisQuestion,
@@ -53,13 +54,16 @@ class DataAnalyzer:
             use_llm: Whether to use LLM for analysis (False = rule-based only)
         """
         self.use_llm = use_llm
-        self.model = model or os.environ.get("AECH_LLM_WORKER_MODEL", "anthropic:claude-sonnet-4-20250514")
+        model_string = model or os.environ.get("AECH_LLM_WORKER_MODEL", "anthropic:claude-sonnet-4-20250514")
+        self.model, _ = parse_model_string(model_string)
+        self._model_settings = get_model_settings(model_string)
 
         if use_llm:
             self.agent: Agent[None, AnalysisResult] = Agent(
                 self.model,
                 output_type=AnalysisResult,
                 instructions=ANALYSIS_INSTRUCTIONS,
+                model_settings=self._model_settings,
             )
 
         self.repository = ConfigRepository()
@@ -290,20 +294,8 @@ class DataAnalyzer:
         # Build prompt with pre-analyzed data
         prompt = self._build_llm_prompt(fields, patterns, data)
 
-        # Use extended thinking for Anthropic models
-        if self.model.startswith("anthropic:"):
-            settings = ModelSettings(
-                temperature=1.0,  # Required for extended thinking
-                thinking={"type": "enabled", "budget_tokens": 8000},
-            )
-        else:
-            settings = ModelSettings(temperature=0.3)
-
         try:
-            result = self.agent.run_sync(
-                prompt,
-                model_settings=settings,
-            )
+            result = self.agent.run_sync(prompt)
             # Merge LLM results with our computed fingerprint and matching configs
             output = result.output
             output.schema_fingerprint = fingerprint

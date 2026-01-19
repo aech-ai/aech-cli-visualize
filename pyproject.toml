@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aech-cli-visualize"
-version = "0.1.0"
+version = "0.1.1"
 description = "Render charts, KPIs, tables, and dashboards to presentation-ready images"
 readme = "README.md"
 requires-python = ">=3.10"

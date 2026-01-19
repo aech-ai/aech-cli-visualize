@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.settings import ModelSettings
 
+from ..model_utils import parse_model_string, get_model_settings
+
 
 class StyleModification(BaseModel):
     """Structured style modification from LLM."""
@@ -149,12 +151,15 @@ class SpecModifier:
             model: LLM model identifier (e.g., "openai:gpt-4o", "anthropic:claude-sonnet-4-20250514")
             enable_thinking: Enable extended thinking for Anthropic models (default: True)
         """
-        self.model = model or os.environ.get("AECH_LLM_WORKER_MODEL", "anthropic:claude-sonnet-4-20250514")
+        model_string = model or os.environ.get("AECH_LLM_WORKER_MODEL", "anthropic:claude-sonnet-4-20250514")
+        self.model, _ = parse_model_string(model_string)
+        self._model_settings = get_model_settings(model_string)
         self.enable_thinking = enable_thinking
         self.agent: Agent[None, SpecModification] = Agent(
             self.model,
             output_type=SpecModification,
             instructions=MODIFICATION_INSTRUCTIONS,
+            model_settings=self._model_settings,
         )
 
     def interpret_feedback(
@@ -202,17 +207,7 @@ Be BOLD with changes - small tweaks won't fix significant visual problems."""
         if image_path and image_path.exists():
             messages.append(BinaryContent.from_path(image_path))
 
-        # Configure model settings with extended thinking for complex visual reasoning
-        settings = ModelSettings(temperature=0.2)
-        if self.enable_thinking and self.model.startswith("anthropic:"):
-            # Enable extended thinking for Anthropic models - this helps with
-            # complex visual analysis and parameter calculation
-            settings = ModelSettings(
-                temperature=1.0,  # Required for extended thinking
-                thinking={"type": "enabled", "budget_tokens": 8000},
-            )
-
-        result = self.agent.run_sync(messages, model_settings=settings)
+        result = self.agent.run_sync(messages)
 
         return result.output
 

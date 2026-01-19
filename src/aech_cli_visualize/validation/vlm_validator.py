@@ -7,6 +7,7 @@ from typing import Any
 from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.settings import ModelSettings
 
+from ..model_utils import parse_model_string, get_model_settings
 from .models import ValidationDeps, ValidationResult
 
 
@@ -48,12 +49,15 @@ class VLMValidator:
             model: Model identifier in format "provider:model" (e.g., "openai:gpt-4o").
                    Defaults to AECH_VLM_MODEL environment variable or "openai:gpt-4o".
         """
-        self.model = model or os.environ.get("AECH_VLM_MODEL", "anthropic:claude-sonnet-4-20250514")
+        model_string = model or os.environ.get("AECH_VLM_MODEL", "anthropic:claude-sonnet-4-20250514")
+        self.model, _ = parse_model_string(model_string)
+        self._model_settings = get_model_settings(model_string)
         self.agent: Agent[ValidationDeps, ValidationResult] = Agent(
             self.model,
             deps_type=ValidationDeps,
             output_type=ValidationResult,
             instructions=VALIDATION_INSTRUCTIONS,
+            model_settings=self._model_settings,
         )
 
     def _summarize_spec(self, spec: dict[str, Any]) -> str:
@@ -136,19 +140,9 @@ Provide your assessment as a structured validation result."""
         )
 
         # Run the agent with image and prompt
-        # Use extended thinking for complex visual analysis (Anthropic models)
-        if self.model.startswith("anthropic:"):
-            settings = ModelSettings(
-                temperature=1.0,  # Required for extended thinking
-                thinking={"type": "enabled", "budget_tokens": 8000},
-            )
-        else:
-            settings = ModelSettings(temperature=0.0)
-
         result = self.agent.run_sync(
             [self._build_prompt(spec), image],
             deps=deps,
-            model_settings=settings,
         )
 
         return result.output
