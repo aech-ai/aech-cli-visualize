@@ -63,20 +63,111 @@ Present the recommendation to the user:
 - Explain widget choices (e.g., "Line chart for revenue trend since data is temporal")
 - Offer alternatives (e.g., "Would you prefer a bar chart instead?")
 
-### Phase 4: Render Dashboard
+### Phase 4: Render and QA Loop
 
-Once user approves (or after refinements):
+**CRITICAL**: You MUST review every rendered dashboard before showing to user. Do not return images without visual QA.
 
+#### Design Principles to Apply
+
+**Visual Hierarchy**: Elements should have size proportional to their importance.
+
+- KPIs and headline metrics should DOMINATE - they're the hero elements
+- Charts should fill their allocated space generously
+- No widget should appear "lost" in empty space or squeezed into a corner
+
+**Spatial Balance**: Every pixel should feel intentional.
+
+- EMPTY SPACE IS A PROBLEM if it's unintentional (huge gap at top, tiny chart in corner)
+- Crowding is also a problem (overlapping text, cramped widgets)
+- Good balance: widgets fill ~80-90% of their allocated regions
+
+**Typography Hierarchy**:
+
+- KPI values: LARGE and readable from distance (48-72pt effective size)
+- KPI labels: Clear secondary text (18-24pt)
+- Chart axis labels: Must be readable (12-16pt minimum)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    QUALITY ASSURANCE LOOP                       │
+│                                                                 │
+│   1. Render ──▶ 2. Review Image ──▶ 3. Check for Issues         │
+│                                            │                    │
+│                              ┌─────────────┴─────────────┐      │
+│                         acceptable?                 issues?     │
+│                              │                          │       │
+│                       Return to User           Call iterate     │
+│                                                     │           │
+│                                                     └───────────┘
+│                                                    (max 3 times) │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Step 1: Initial Render**
 ```bash
 aech-cli-visualize dashboard spec.json --output-dir ./output --theme corporate
 ```
 
-For validated rendering with VLM feedback:
+**Step 2: Visual Review (REQUIRED)**
+
+You must examine the rendered image and check for:
+- [ ] **Visual balance**: No huge empty areas, no cramped widgets
+- [ ] **Text readable** at presentation distance (not too small)
+- [ ] **No widget overlap** or cramping
+- [ ] **Delta indicators visible** on KPIs (e.g., +8.2%)
+- [ ] **Chart axis labels readable** (12pt minimum effective)
+- [ ] **Adequate spacing** between widgets (not too tight, not too loose)
+- [ ] **Widgets fill their space** (not tiny in a large region)
+- [ ] **Titles and labels not truncated**
+
+**Step 3: Iterate if Issues Found**
+
+If issues detected, use the iterate command with plain language feedback describing the visual problem:
 ```bash
-aech-cli-visualize dashboard spec.json --output-dir ./output --theme corporate --vlm-validate
+aech-cli-visualize iterate spec.json \
+  --feedback "KPIs overlapping, fonts too small, need more spacing between charts" \
+  --previous-image ./output/dashboard.png \
+  --output-dir ./output
 ```
 
-Show the user the output path and offer to open/preview.
+The iterate command's internal agent handles all parameter calculations automatically.
+
+**Feedback Examples** (plain language):
+
+| Issue | Feedback |
+|-------|----------|
+| Text too small | "fonts too small to read" |
+| Widgets cramped | "widgets overlapping" |
+| KPIs overlapping | "KPIs too close together" |
+| Gauge too small | "gauge is tiny" |
+| Too much space at top | "too much space between title and content" |
+| Top row too low | "move top row closer to title" |
+| Charts too close | "need more spacing between charts" |
+| Poor visual balance | "poor visual balance - huge empty area on the right" |
+
+**IMPORTANT**: Describe VISUAL problems in plain language. The iterate command's internal agent handles all parameter calculations.
+
+**Step 4: Max Iterations**
+
+- Maximum 3 QA iterations
+- If still not acceptable after 3, return best result with explanation
+- Always tell user what was adjusted
+
+**Example QA conversation with yourself:**
+
+```
+Iteration 1: Rendered dashboard.png
+Review: KPI numbers overlapping, fonts tiny, no deltas visible
+Action: iterate --feedback "KPIs overlapping, fonts too small, deltas missing"
+
+Iteration 2: Rendered dashboard.png
+Review: KPIs now separated, deltas showing, but charts still cramped
+Action: iterate --feedback "triple the spacing between charts"
+
+Iteration 3: Rendered dashboard.png
+Review: All elements readable, proper spacing, deltas visible
+Result: APPROVED - return to user
+```
 
 ### Phase 5: Save Configuration
 

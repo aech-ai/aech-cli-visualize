@@ -99,49 +99,54 @@ class KPIWidget(BaseWidget):
         delta: str | None,
     ) -> None:
         """Add a simple KPI indicator without sparkline."""
-        delta_config = None
-        if delta:
-            # Parse delta value for indicator
-            delta_value = delta.replace("+", "").replace("%", "")
-            try:
-                delta_num = float(delta_value)
-                delta_config = dict(
-                    reference=0,
-                    relative=False,
-                    valueformat=".1f" if "%" in delta else ".0f",
-                    suffix="%" if "%" in delta else "",
-                )
-            except ValueError:
-                delta_config = None
+        # Get font scale from config (passed from dashboard style)
+        font_scale = self.config.get("font_scale", 1.0)
 
         # Use number mode for formatted display
         format_str = self.config.get("format_value") or ",.0f"
         # Strip Python format braces if present
         valueformat = format_str.replace("{:", "").replace("}", "")
 
+        # Scaled font sizes
+        value_font_size = int(72 * font_scale)
+        label_font_size = int(24 * font_scale)
+        delta_font_size = int(28 * font_scale)
+
+        # Vertical centering: content_v_offset shifts content up (positive) or down (negative)
+        # Default 0 centers content; range typically -0.1 to 0.1
+        content_v_offset = self.config.get("content_v_offset", 0)
+
+        # Base domain positions - centered in widget space
+        domain_bottom = 0.08 + content_v_offset if delta else 0.05 + content_v_offset
+        domain_top = 0.82 + content_v_offset
+        delta_y = 0.12 + content_v_offset
+
         fig.add_trace(go.Indicator(
-            mode="number+delta" if delta_config else "number",
+            mode="number",
             value=self.config["value"] if isinstance(self.config["value"], (int, float)) else 0,
             number=dict(
-                font=dict(size=72, color=self.theme["colors"]["primary"]),
+                font=dict(size=value_font_size, color=self.theme["colors"]["primary"]),
                 valueformat=valueformat,
             ),
-            delta=delta_config,
             title=dict(
                 text=label,
-                font=dict(size=24, color=self.theme["colors"]["text_secondary"]),
+                font=dict(size=label_font_size, color=self.theme["colors"]["text_secondary"]),
             ),
-            domain=dict(x=[0, 1], y=[0.1, 0.9]),
+            domain=dict(x=[0, 1], y=[domain_bottom, domain_top]),
         ))
 
-        # Add delta as annotation if we couldn't use indicator's delta
-        if delta and not delta_config:
+        # Always use annotation for delta - indicator delta mode is buggy
+        if delta:
+            # Determine arrow prefix based on delta direction
+            arrow = "▲" if delta.startswith("+") or (delta[0].isdigit() and not delta.startswith("-")) else "▼"
             fig.add_annotation(
-                text=delta,
+                text=f"{arrow}{delta.lstrip('+-')}",
                 x=0.5,
-                y=0.25,
+                y=delta_y,
+                xref="paper",
+                yref="paper",
                 showarrow=False,
-                font=dict(size=28, color=self._get_delta_color()),
+                font=dict(size=delta_font_size, color=self._get_delta_color()),
             )
 
         fig.update_layout(
@@ -158,6 +163,12 @@ class KPIWidget(BaseWidget):
     ) -> None:
         """Add KPI with sparkline chart."""
         colors = self.theme["colors"]
+        font_scale = self.config.get("font_scale", 1.0)
+
+        # Scaled font sizes
+        value_font_size = int(64 * font_scale)
+        label_font_size = int(20 * font_scale)
+        delta_font_size = int(24 * font_scale)
 
         # Add sparkline as background
         fig.add_trace(go.Scatter(
@@ -177,7 +188,7 @@ class KPIWidget(BaseWidget):
             xref="paper",
             yref="paper",
             showarrow=False,
-            font=dict(size=64, color=colors["primary"], family=self.theme["fonts"]["title"]),
+            font=dict(size=value_font_size, color=colors["primary"], family=self.theme["fonts"]["title"]),
         )
 
         # Add label
@@ -188,19 +199,20 @@ class KPIWidget(BaseWidget):
             xref="paper",
             yref="paper",
             showarrow=False,
-            font=dict(size=20, color=colors["text_secondary"]),
+            font=dict(size=label_font_size, color=colors["text_secondary"]),
         )
 
         # Add delta if present
         if delta:
+            arrow = "▲" if delta.startswith("+") or (delta[0].isdigit() and not delta.startswith("-")) else "▼"
             fig.add_annotation(
-                text=delta,
+                text=f"{arrow}{delta.lstrip('+-')}",
                 x=0.5,
                 y=0.2,
                 xref="paper",
                 yref="paper",
                 showarrow=False,
-                font=dict(size=24, color=self._get_delta_color()),
+                font=dict(size=delta_font_size, color=self._get_delta_color()),
             )
 
         fig.update_layout(

@@ -48,7 +48,7 @@ class VLMValidator:
             model: Model identifier in format "provider:model" (e.g., "openai:gpt-4o").
                    Defaults to AECH_VLM_MODEL environment variable or "openai:gpt-4o".
         """
-        self.model = model or os.environ.get("AECH_VLM_MODEL", "openai:gpt-5-mini")
+        self.model = model or os.environ.get("AECH_VLM_MODEL", "anthropic:claude-sonnet-4-20250514")
         self.agent: Agent[ValidationDeps, ValidationResult] = Agent(
             self.model,
             deps_type=ValidationDeps,
@@ -136,10 +136,19 @@ Provide your assessment as a structured validation result."""
         )
 
         # Run the agent with image and prompt
+        # Use extended thinking for complex visual analysis (Anthropic models)
+        if self.model.startswith("anthropic:"):
+            settings = ModelSettings(
+                temperature=1.0,  # Required for extended thinking
+                thinking={"type": "enabled", "budget_tokens": 8000},
+            )
+        else:
+            settings = ModelSettings(temperature=0.0)
+
         result = self.agent.run_sync(
             [self._build_prompt(spec), image],
             deps=deps,
-            model_settings=ModelSettings(temperature=0.0),
+            model_settings=settings,
         )
 
         return result.output

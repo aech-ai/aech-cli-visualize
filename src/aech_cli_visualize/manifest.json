@@ -346,6 +346,54 @@
           "description": "Config name or UUID to delete."
         }
       ]
+    },
+    {
+      "name": "iterate",
+      "description": "Iterate on a dashboard based on user feedback. Uses LLM to interpret feedback like 'fonts too small' or 'too crowded' and modifies the spec accordingly. Outputs new render and optionally saves modified spec. Use when user wants to refine a dashboard's appearance.",
+      "parameters": [
+        {
+          "name": "spec_file",
+          "type": "argument",
+          "required": false,
+          "description": "Path to dashboard spec JSON. If omitted, reads from stdin."
+        },
+        {
+          "name": "feedback",
+          "type": "option",
+          "required": true,
+          "description": "User feedback to apply (e.g., 'fonts too small', 'too crowded', 'need more spacing')."
+        },
+        {
+          "name": "previous-image",
+          "type": "option",
+          "required": false,
+          "description": "Path to previous render for visual context. Helps LLM understand current state."
+        },
+        {
+          "name": "output-dir",
+          "type": "option",
+          "required": true,
+          "description": "Directory where output image and spec will be written."
+        },
+        {
+          "name": "theme",
+          "type": "option",
+          "required": false,
+          "description": "Visual theme. Values: corporate, modern, minimal, dark, light. Default: corporate."
+        },
+        {
+          "name": "format",
+          "type": "option",
+          "required": false,
+          "description": "Output format. Values: png, svg, pdf. Default: png."
+        },
+        {
+          "name": "save-spec",
+          "type": "option",
+          "required": false,
+          "description": "Save modified spec to output dir. Default: true. Use --save-spec or --no-save-spec."
+        }
+      ]
     }
   ],
   "available_in_sandbox": true,
@@ -377,7 +425,46 @@
       "Default aspect ratio is 16:9 for presentation compatibility",
       "Themes: corporate (blue/gray), modern (vibrant), minimal (B&W), dark, light",
       "Data for charts: {\"x\": [...], \"y\": [...]} or {\"x\": [...], \"series\": [{\"name\": \"...\", \"values\": [...]}]}",
-      "Data for tables: {\"headers\": [...], \"rows\": [[...], [...]]}"
-    ]
+      "Data for tables: {\"headers\": [...], \"rows\": [[...], [...]]}}",
+      "Style section in spec: {\"style\": {\"preset\": \"presentation\", \"font_scale\": 1.4, \"h_spacing\": 0.08, \"v_spacing\": 0.10}}",
+      "Style presets: compact (small fonts/tight), default, presentation (large fonts/spacious), spacious",
+      "Use iterate command to refine dashboards based on natural language feedback"
+    ],
+    "quality_assurance": {
+      "description": "CRITICAL: You MUST visually review every rendered dashboard before returning to user. Do not return images without QA.",
+      "design_principles": {
+        "visual_hierarchy": "Elements should have size proportional to importance. KPIs are hero elements and should dominate. Charts should fill their space generously.",
+        "spatial_balance": "Every pixel should feel intentional. Wasted empty space is as bad as cramping. Widgets should fill 80-90% of their allocated regions.",
+        "typography": "All text must be readable at presentation distance."
+      },
+      "process": [
+        "1. Render dashboard with initial spec (use preset: presentation for best defaults)",
+        "2. View the rendered image and check for visual balance",
+        "3. If issues found, call iterate with natural language feedback describing what's wrong",
+        "4. Repeat until acceptable (max 3 iterations)",
+        "5. Return final result to user"
+      ],
+      "checklist": [
+        "Visual balance: no huge empty areas, no cramped widgets",
+        "Text readable at presentation distance",
+        "No widget overlap or cramping",
+        "Delta indicators visible on KPIs",
+        "Chart axis labels readable",
+        "Adequate spacing between widgets",
+        "Titles and labels not truncated",
+        "Widgets fill their allocated space",
+        "Top row positioned well relative to title"
+      ],
+      "iterate_feedback_examples": {
+        "fonts_too_small": "fonts too small to read",
+        "widgets_cramped": "widgets overlapping",
+        "gauge_tiny": "gauge is tiny",
+        "empty_space_at_top": "too much space between title and content",
+        "top_row_too_low": "move top row closer to title",
+        "charts_too_close": "need more spacing between charts",
+        "poor_balance": "poor visual balance - [describe what's wrong]"
+      },
+      "important": "Describe VISUAL problems in plain language. The iterate command's internal agent handles all parameter calculations automatically."
+    }
   }
 }

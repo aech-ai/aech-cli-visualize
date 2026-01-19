@@ -53,7 +53,7 @@ class DataAnalyzer:
             use_llm: Whether to use LLM for analysis (False = rule-based only)
         """
         self.use_llm = use_llm
-        self.model = model or os.environ.get("AECH_LLM_WORKER_MODEL", "openai:gpt-5-mini")
+        self.model = model or os.environ.get("AECH_LLM_WORKER_MODEL", "anthropic:claude-sonnet-4-20250514")
 
         if use_llm:
             self.agent: Agent[None, AnalysisResult] = Agent(
@@ -290,10 +290,19 @@ class DataAnalyzer:
         # Build prompt with pre-analyzed data
         prompt = self._build_llm_prompt(fields, patterns, data)
 
+        # Use extended thinking for Anthropic models
+        if self.model.startswith("anthropic:"):
+            settings = ModelSettings(
+                temperature=1.0,  # Required for extended thinking
+                thinking={"type": "enabled", "budget_tokens": 8000},
+            )
+        else:
+            settings = ModelSettings(temperature=0.3)
+
         try:
             result = self.agent.run_sync(
                 prompt,
-                model_settings=ModelSettings(temperature=0.3),
+                model_settings=settings,
             )
             # Merge LLM results with our computed fingerprint and matching configs
             output = result.output

@@ -21,6 +21,38 @@ ASPECT_RATIOS = {
     "1:1": (1, 1),
 }
 
+# Style presets for different use cases
+STYLE_PRESETS = {
+    "compact": {
+        "font_scale": 0.8,
+        "h_spacing": 0.015,
+        "v_spacing": 0.03,
+        "widget_padding": 10,
+        "title_margin": 0.04,
+    },
+    "default": {
+        "font_scale": 1.0,
+        "h_spacing": 0.02,
+        "v_spacing": 0.04,
+        "widget_padding": 15,
+        "title_margin": 0.06,
+    },
+    "presentation": {
+        "font_scale": 1.45,
+        "h_spacing": 0.10,
+        "v_spacing": 0.10,
+        "widget_padding": 22,
+        "title_margin": -0.10,
+    },
+    "spacious": {
+        "font_scale": 1.2,
+        "h_spacing": 0.04,
+        "v_spacing": 0.07,
+        "widget_padding": 30,
+        "title_margin": 0.02,
+    },
+}
+
 
 class DashboardComposer:
     """Compose multiple widgets into a single dashboard image."""
@@ -46,6 +78,21 @@ class DashboardComposer:
         self.aspect_ratio = layout.get("aspect_ratio", "16:9")
         self.title = spec.get("title")
         self.padding = layout.get("padding", 20)
+
+        # Extract style settings
+        style = spec.get("style", {})
+        preset_name = style.get("preset", "default")
+        preset = STYLE_PRESETS.get(preset_name, STYLE_PRESETS["default"])
+
+        # Style values (explicit values override preset)
+        self.font_scale = style.get("font_scale", preset["font_scale"])
+        self.h_spacing = style.get("h_spacing", preset["h_spacing"])
+        self.v_spacing = style.get("v_spacing", preset["v_spacing"])
+        self.widget_padding = style.get("widget_padding", preset["widget_padding"])
+        self.title_size = style.get("title_size", int(28 * self.font_scale))
+        # Title margin: space reserved for title area (negative values push content up toward title)
+        default_title_margin = preset.get("title_margin", 0.06 if self.title else 0.02)
+        self.title_margin = style.get("title_margin", default_title_margin)
 
     def _get_widget_type_category(self, widget_type: str) -> str:
         """Categorize widget type for subplot handling.
@@ -81,20 +128,20 @@ class DashboardComposer:
         Returns:
             Tuple of (x_domain, y_domain) as [min, max] pairs
         """
-        # Calculate cell dimensions
-        h_spacing = 0.02
-        v_spacing = 0.04
-        title_space = 0.08 if self.title else 0.02
+        # Use style settings for spacing
+        h_spacing = self.h_spacing
+        v_spacing = self.v_spacing
+        title_margin = self.title_margin
 
         # Available space after margins
         cell_width = (1.0 - h_spacing * (self.columns + 1)) / self.columns
-        cell_height = (1.0 - title_space - v_spacing * (self.rows + 1)) / self.rows
+        cell_height = (1.0 - title_margin - v_spacing * (self.rows + 1)) / self.rows
 
         # Calculate position (y is inverted - row 0 is at top)
         x0 = h_spacing + col * (cell_width + h_spacing)
         x1 = x0 + colspan * cell_width + (colspan - 1) * h_spacing
 
-        y1 = 1.0 - title_space - v_spacing - row * (cell_height + v_spacing)
+        y1 = 1.0 - title_margin - v_spacing - row * (cell_height + v_spacing)
         y0 = y1 - rowspan * cell_height - (rowspan - 1) * v_spacing
 
         return [x0, x1], [y0, y1]
@@ -109,7 +156,10 @@ class DashboardComposer:
             Widget figure
         """
         widget_type = widget_spec["type"]
-        config = widget_spec.get("config", {})
+        config = widget_spec.get("config", {}).copy()
+
+        # Inject font_scale into config for widgets that support it
+        config["font_scale"] = self.font_scale
 
         if widget_type == "chart":
             widget = ChartWidget(
@@ -118,6 +168,8 @@ class DashboardComposer:
                 title=config.get("title"),
                 theme=self.theme,
             )
+            # Pass font_scale via widget config
+            widget.config["font_scale"] = self.font_scale
         elif widget_type == "kpi":
             widget = KPIWidget(
                 value=config.get("value", 0),
@@ -128,6 +180,8 @@ class DashboardComposer:
                 sparkline=config.get("sparkline"),
                 theme=self.theme,
             )
+            # Pass font_scale via widget config
+            widget.config["font_scale"] = self.font_scale
         elif widget_type == "table":
             widget = TableWidget(
                 headers=config.get("headers", []),
@@ -144,6 +198,8 @@ class DashboardComposer:
                 thresholds=config.get("thresholds"),
                 theme=self.theme,
             )
+            # Pass font_scale via widget config
+            widget.config["font_scale"] = self.font_scale
         else:
             raise ValueError(f"Unknown widget type: {widget_type}")
 
@@ -217,6 +273,7 @@ class DashboardComposer:
             return fig
 
         fig = go.Figure()
+        chart_annotations = []
 
         # Add each widget with calculated domain
         for i, widget_spec in enumerate(widgets):
@@ -231,6 +288,41 @@ class DashboardComposer:
 
             # Create widget figure
             widget_fig = self._create_widget_figure(widget_spec)
+
+            # Extract chart title from widget config for charts
+            widget_type = widget_spec.get("type")
+            if widget_type == "chart":
+                chart_title = widget_spec.get("config", {}).get("title")
+                if chart_title:
+                    # Add title as annotation above the chart
+                    chart_title_size = int(18 * self.font_scale)
+                    chart_annotations.append(dict(
+                        text=f"<b>{chart_title}</b>",
+                        x=(x_domain[0] + x_domain[1]) / 2,
+                        y=y_domain[1] + 0.02,
+                        xref="paper",
+                        yref="paper",
+                        showarrow=False,
+                        font=dict(
+                            size=chart_title_size,
+                            color=self.theme["colors"]["text"],
+                        ),
+                        xanchor="center",
+                        yanchor="bottom",
+                    ))
+
+            # Transfer widget annotations (like KPI deltas) with remapped coordinates
+            if widget_fig.layout.annotations:
+                for ann in widget_fig.layout.annotations:
+                    # Remap paper coordinates from widget space to dashboard space
+                    ann_dict = ann.to_plotly_json()
+                    if ann_dict.get("xref") == "paper" and ann_dict.get("yref") == "paper":
+                        # Map x from [0,1] in widget to [x_domain[0], x_domain[1]] in dashboard
+                        orig_x = ann_dict.get("x", 0.5)
+                        orig_y = ann_dict.get("y", 0.5)
+                        ann_dict["x"] = x_domain[0] + orig_x * (x_domain[1] - x_domain[0])
+                        ann_dict["y"] = y_domain[0] + orig_y * (y_domain[1] - y_domain[0])
+                    chart_annotations.append(ann_dict)
 
             # Add traces with updated domain
             for trace in widget_fig.data:
@@ -248,19 +340,29 @@ class DashboardComposer:
                     x_axis_key = f"xaxis{axis_suffix}"
                     y_axis_key = f"yaxis{axis_suffix}"
 
+                    tick_font_size = int(14 * self.font_scale)
+                    axis_title_size = int(14 * self.font_scale)
                     fig.layout[x_axis_key] = dict(
                         domain=x_domain,
                         anchor=f"y{axis_suffix}" if axis_suffix else "y",
                         gridcolor=self.theme["colors"]["grid"],
                         linecolor=self.theme["colors"]["grid"],
-                        tickfont=dict(color=self.theme["colors"]["text_secondary"]),
+                        tickfont=dict(
+                            color=self.theme["colors"]["text_secondary"],
+                            size=tick_font_size,
+                        ),
+                        title=dict(font=dict(size=axis_title_size)),
                     )
                     fig.layout[y_axis_key] = dict(
                         domain=y_domain,
                         anchor=f"x{axis_suffix}" if axis_suffix else "x",
                         gridcolor=self.theme["colors"]["grid"],
                         linecolor=self.theme["colors"]["grid"],
-                        tickfont=dict(color=self.theme["colors"]["text_secondary"]),
+                        tickfont=dict(
+                            color=self.theme["colors"]["text_secondary"],
+                            size=tick_font_size,
+                        ),
+                        title=dict(font=dict(size=axis_title_size)),
                     )
 
                 fig.add_trace(trace)
@@ -272,9 +374,10 @@ class DashboardComposer:
             "font": {
                 "family": self.theme["fonts"]["body"],
                 "color": self.theme["colors"]["text"],
+                "size": int(14 * self.font_scale),
             },
             "showlegend": False,
-            "margin": dict(l=40, r=40, t=80 if self.title else 40, b=40),
+            "margin": dict(l=60, r=40, t=100 if self.title else 60, b=60),
         }
 
         if self.title:
@@ -282,8 +385,12 @@ class DashboardComposer:
                 text=self.title,
                 x=0.5,
                 xanchor="center",
-                font=dict(size=28, color=self.theme["colors"]["text"]),
+                font=dict(size=self.title_size, color=self.theme["colors"]["text"]),
             )
+
+        # Add chart title annotations
+        if chart_annotations:
+            layout_updates["annotations"] = chart_annotations
 
         fig.update_layout(**layout_updates)
 

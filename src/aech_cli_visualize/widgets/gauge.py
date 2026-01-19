@@ -88,13 +88,19 @@ class GaugeWidget(BaseWidget):
         label = self.config.get("label")
         unit = self.config.get("unit", "")
         colors = self.theme["colors"]
+        font_scale = self.config.get("font_scale", 1.0)
+
+        # Scaled font sizes
+        value_font_size = int(48 * font_scale)
+        label_font_size = int(20 * font_scale)
+        tick_font_size = int(12 * font_scale)
 
         # Build gauge configuration
         gauge_config = {
             "axis": {
                 "range": [min_val, max_val],
                 "tickcolor": colors["text_secondary"],
-                "tickfont": {"color": colors["text_secondary"]},
+                "tickfont": {"color": colors["text_secondary"], "size": tick_font_size},
             },
             "bar": {"color": self._get_threshold_color()},
             "bgcolor": colors["surface"],
@@ -119,11 +125,11 @@ class GaugeWidget(BaseWidget):
             value=value,
             number={
                 "suffix": unit,
-                "font": {"size": 48, "color": colors["primary"]},
+                "font": {"size": value_font_size, "color": colors["primary"]},
             },
             title={
                 "text": label or "",
-                "font": {"size": 20, "color": colors["text_secondary"]},
+                "font": {"size": label_font_size, "color": colors["text_secondary"]},
             },
             gauge=gauge_config,
             domain={"x": [0, 1], "y": [0, 1]},

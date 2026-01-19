@@ -34,6 +34,9 @@ ENV/
 test_outputs/
 tests/output/
 
+# Environment
+.env
+
 # OS
 .DS_Store
 Thumbs.db

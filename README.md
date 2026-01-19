@@ -19,6 +19,25 @@ uv pip install -e .
 uv build
 ```
 
+## Configuration
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+cp .env.example .env
+```
+
+**Environment Variables:**
+
+| Variable | Description | Default |
+| -------- | ----------- | ------- |
+| `AECH_LLM_WORKER_MODEL` | Model for iterate command and data analyzer | `anthropic:claude-sonnet-4-20250514` |
+| `AECH_VLM_MODEL` | Model for VLM validation (must support vision) | `anthropic:claude-sonnet-4-20250514` |
+| `ANTHROPIC_API_KEY` | API key for Anthropic models | - |
+| `OPENAI_API_KEY` | API key for OpenAI models | - |
+
+Model format is `provider:model` (e.g., `anthropic:claude-sonnet-4-20250514`, `openai:gpt-4o`).
+
 ## CLI Commands
 
 | Command | Description |
@@ -266,6 +285,52 @@ pytest
 echo '{"x": ["A","B"], "y": [1,2]}' | aech-cli-visualize chart bar --output-dir ./test_out
 ```
 
+## Style Settings
+
+Dashboard specs support a `style` section for fine-tuning layout and fonts:
+
+```json
+{
+  "style": {
+    "preset": "presentation",
+    "font_scale": 1.4,
+    "h_spacing": 0.08,
+    "v_spacing": 0.10,
+    "title_size": 32
+  }
+}
+```
+
+| Setting | Description | Range |
+|---------|-------------|-------|
+| `preset` | Base preset: compact, default, presentation, spacious | - |
+| `font_scale` | Multiplier for all fonts | 0.6 - 2.0 |
+| `h_spacing` | Horizontal gap between widgets | 0.01 - 0.15 |
+| `v_spacing` | Vertical gap between widgets | 0.01 - 0.15 |
+| `title_size` | Dashboard title font size in pixels | 16 - 48 |
+
+**Preset defaults:**
+
+| Preset | font_scale | h_spacing | v_spacing |
+|--------|------------|-----------|-----------|
+| compact | 0.8 | 0.015 | 0.03 |
+| default | 1.0 | 0.02 | 0.04 |
+| presentation | 1.4 | 0.035 | 0.06 |
+| spacious | 1.2 | 0.04 | 0.07 |
+
+## Iterate Command
+
+Refine dashboards based on natural language feedback:
+
+```bash
+aech-cli-visualize iterate spec.json \
+  --feedback "fonts too small, charts too crowded" \
+  --previous-image ./out/dashboard.png \
+  --output-dir ./out
+```
+
+The LLM interprets feedback and modifies style settings automatically.
+
 ## Agent Usage Patterns
 
 ### Worker Agent (Ad-hoc)
@@ -282,4 +347,41 @@ Skills compose capabilities via Python scripts:
 data = subprocess.run(["aech-cli-analytics", "query", "..."], capture_output=True)
 spec = transform_to_dashboard_spec(json.loads(data.stdout))
 subprocess.run(["aech-cli-visualize", "dashboard", "--output-dir", "./outputs"], input=json.dumps(spec))
+```
+
+### Quality-Assured Dashboard Generation
+```python
+# Agent Aech pattern for high-quality dashboards
+import subprocess
+import json
+
+def generate_dashboard_with_qa(spec, output_dir, max_iterations=3):
+    """Generate dashboard with iterative QA."""
+    for i in range(max_iterations):
+        # Render
+        result = subprocess.run(
+            ["aech-cli-visualize", "dashboard", "--output-dir", output_dir],
+            input=json.dumps(spec).encode(),
+            capture_output=True
+        )
+        output = json.loads(result.stdout)
+        image_path = output["output_files"][0]["path"]
+
+        # Agent reviews image (VLM call)
+        issues = review_dashboard_image(image_path)
+
+        if not issues:
+            return output  # Acceptable
+
+        # Iterate with feedback
+        feedback = "; ".join(issues)
+        result = subprocess.run(
+            ["aech-cli-visualize", "iterate", "--feedback", feedback,
+             "--previous-image", image_path, "--output-dir", output_dir],
+            input=json.dumps(spec).encode(),
+            capture_output=True
+        )
+        spec = json.loads(open(f"{output_dir}/dashboard_spec.json").read())
+
+    return output  # Return best effort after max iterations
 ```

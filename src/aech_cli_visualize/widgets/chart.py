@@ -231,9 +231,18 @@ class ChartWidget(BaseWidget):
 
     def _apply_common_layout(self, fig: go.Figure) -> None:
         """Apply common layout settings to the figure."""
+        font_scale = self.config.get("font_scale", 1.0)
+
+        # Scaled font sizes
+        title_size = int(18 * font_scale)
+        axis_title_size = int(14 * font_scale)
+        tick_size = int(12 * font_scale)
+        legend_size = int(12 * font_scale)
+
         layout_updates = {
             "showlegend": self.config["show_legend"],
             "margin": dict(l=60, r=40, t=80, b=60),
+            "font": dict(size=tick_size),
         }
 
         if self.config["title"]:
@@ -241,12 +250,27 @@ class ChartWidget(BaseWidget):
                 text=self.config["title"],
                 x=0.5,
                 xanchor="center",
+                font=dict(size=title_size),
             )
 
+        # Apply axis font sizes
+        layout_updates["xaxis"] = dict(
+            tickfont=dict(size=tick_size),
+            title=dict(font=dict(size=axis_title_size)),
+        )
+        layout_updates["yaxis"] = dict(
+            tickfont=dict(size=tick_size),
+            title=dict(font=dict(size=axis_title_size)),
+        )
+
         if self.config["x_label"]:
-            layout_updates["xaxis_title"] = self.config["x_label"]
+            layout_updates["xaxis"]["title"]["text"] = self.config["x_label"]
 
         if self.config["y_label"]:
-            layout_updates["yaxis_title"] = self.config["y_label"]
+            layout_updates["yaxis"]["title"]["text"] = self.config["y_label"]
+
+        # Legend font
+        if self.config["show_legend"]:
+            layout_updates["legend"] = dict(font=dict(size=legend_size))
 
         fig.update_layout(**layout_updates)

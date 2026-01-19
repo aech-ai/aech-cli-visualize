@@ -605,6 +605,98 @@ def config_delete_command(
         raise typer.Exit(1)
 
 
+@app.command("iterate")
+def iterate_command(
+    spec_file: Annotated[Optional[str], typer.Argument(help="Path to spec JSON (reads stdin if omitted)")] = None,
+    feedback: Annotated[str, typer.Option("--feedback", "-f", help="User feedback to apply")] = "",
+    previous_image: Annotated[Optional[str], typer.Option("--previous-image", help="Path to previous render for visual context")] = None,
+    output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output")] = ".",
+    theme: Annotated[str, typer.Option("--theme", help="Visual theme")] = "corporate",
+    format: Annotated[str, typer.Option("--format", help="Output format: png, svg, pdf")] = "png",
+    resolution: Annotated[str, typer.Option("--resolution", help="Output resolution")] = "1080p",
+    save_spec: Annotated[bool, typer.Option("--save-spec/--no-save-spec", help="Save modified spec to output dir")] = True,
+) -> None:
+    """Iterate on a dashboard based on user feedback.
+
+    Takes a dashboard spec and user feedback, uses LLM to interpret the feedback
+    and modify the spec, then re-renders the dashboard.
+
+    Example:
+        aech-cli-visualize iterate spec.json --feedback "fonts too small, too crowded"
+    """
+    try:
+        from .iterate import SpecModifier
+        from .dashboard.composer import DashboardComposer
+
+        if not feedback:
+            output_json({
+                "success": False,
+                "error": "Feedback is required. Use --feedback 'your feedback here'",
+            })
+            raise typer.Exit(1)
+
+        # Parse input spec
+        spec = parse_data_input(spec_file)
+
+        # Initialize modifier
+        modifier = SpecModifier()
+
+        # Get previous image path if provided
+        image_path = Path(previous_image) if previous_image else None
+
+        # Interpret feedback and generate modifications
+        modifications = modifier.interpret_feedback(
+            feedback=feedback,
+            current_spec=spec,
+            image_path=image_path,
+        )
+
+        # Apply modifications
+        new_spec = modifier.apply_modifications(spec, modifications)
+
+        # Render with new spec
+        composer = DashboardComposer(new_spec, theme=theme)
+        output_path = composer.render(
+            output_dir=output_dir,
+            filename="dashboard",
+            format=format,  # type: ignore
+            resolution=resolution,
+        )
+
+        # Add image dimensions
+        width, height = parse_resolution(resolution)
+        file_info = get_file_info(output_path)
+        file_info["width"] = width
+        file_info["height"] = height
+
+        # Save modified spec if requested
+        spec_path = None
+        if save_spec:
+            spec_path = Path(output_dir) / "dashboard_spec.json"
+            with open(spec_path, "w") as f:
+                json.dump(new_spec, f, indent=2)
+
+        output_json({
+            "success": True,
+            "output_files": [file_info],
+            "spec_file": str(spec_path) if spec_path else None,
+            "modifications": {
+                "reasoning": modifications.reasoning,
+                "style_changes": modifications.style.model_dump(exclude_none=True) if modifications.style else {},
+                "widget_count": len(modifications.widget_modifications),
+                "layout_changes": modifications.layout_changes,
+            },
+            "message": f"Dashboard iterated successfully based on feedback",
+        })
+
+    except Exception as e:
+        output_json({
+            "success": False,
+            "error": str(e),
+        })
+        raise typer.Exit(1)
+
+
 @app.command("themes", hidden=True)
 def themes_command() -> None:
     """List available themes."""
