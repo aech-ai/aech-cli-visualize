@@ -20,6 +20,9 @@ dependencies = [
 aech-cli-visualize = "aech_cli_visualize.main:run"
 
 [project.optional-dependencies]
+vlm = [
+    "pydantic-ai>=0.1.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -29,4 +32,8 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-aech_cli_visualize = ["manifest.json"]
+aech_cli_visualize = [
+    "manifest.json",
+    "skills/*/SKILL.md",
+    "skills/*/scripts/*.py",
+]

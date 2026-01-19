@@ -1,9 +1,15 @@
 {
-  "spec_version": 4,
+  "spec_version": 5,
   "name": "visualize",
   "type": "cli",
   "command": "aech-cli-visualize",
-  "description": "Render charts, KPIs, tables, and dashboards to presentation-ready images. Input: JSON data or specification files. Output: PNG/SVG/PDF images sized for presentations (16:9 aspect ratio by default).",
+  "description": "Render charts, KPIs, tables, and dashboards to presentation-ready images. Input: JSON data or specification files. Output: PNG/SVG/PDF images sized for presentations (16:9 aspect ratio by default). Includes data analysis for dashboard recommendations and config repository for reusable templates.",
+  "bundled_skills": [
+    {
+      "name": "dashboard-designer",
+      "description": "Interactive dashboard design workflow. Analyzes data, asks clarifying questions, generates visualizations, and saves reusable configs. Use when user has raw data and wants a dashboard created collaboratively."
+    }
+  ],
   "actions": [
     {
       "name": "chart",
@@ -224,6 +230,120 @@
           "type": "option",
           "required": false,
           "description": "Output format. Values: png, svg, pdf. Default: png."
+        }
+      ]
+    },
+    {
+      "name": "analyze",
+      "description": "Analyze data to suggest visualizations and generate clarifying questions. Input: JSON data via file or stdin. Output: field analysis, detected patterns, widget suggestions, optional questions, matching configs. Use when starting dashboard design to understand the data.",
+      "parameters": [
+        {
+          "name": "data_file",
+          "type": "argument",
+          "required": false,
+          "description": "Path to JSON data file. If omitted, reads from stdin."
+        },
+        {
+          "name": "questions",
+          "type": "option",
+          "required": false,
+          "description": "Include clarifying questions in output. Default: true. Use --questions or --no-questions."
+        },
+        {
+          "name": "llm",
+          "type": "option",
+          "required": false,
+          "description": "Use LLM for enhanced analysis. Default: true. Use --llm or --no-llm."
+        }
+      ]
+    },
+    {
+      "name": "config save",
+      "description": "Save a dashboard specification to the config repository for future reuse. Input: dashboard spec via file or stdin. Output: saved config metadata. Use after creating a dashboard the user wants to reuse.",
+      "parameters": [
+        {
+          "name": "name",
+          "type": "option",
+          "required": true,
+          "description": "Unique name for the config. Use lowercase with hyphens (e.g., quarterly-sales)."
+        },
+        {
+          "name": "spec_file",
+          "type": "argument",
+          "required": false,
+          "description": "Path to dashboard spec JSON. If omitted, reads from stdin."
+        },
+        {
+          "name": "tags",
+          "type": "option",
+          "required": false,
+          "description": "Comma-separated tags for categorization (e.g., sales,executive,quarterly)."
+        },
+        {
+          "name": "description",
+          "type": "option",
+          "required": false,
+          "description": "Human-readable description of what this dashboard shows."
+        }
+      ]
+    },
+    {
+      "name": "config list",
+      "description": "List saved dashboard configurations. Output: JSON array of config metadata. Use to show user available saved dashboards.",
+      "parameters": [
+        {
+          "name": "tags",
+          "type": "option",
+          "required": false,
+          "description": "Filter by tags. Comma-separated (e.g., sales,executive)."
+        },
+        {
+          "name": "limit",
+          "type": "option",
+          "required": false,
+          "description": "Maximum configs to return. Default: 20."
+        }
+      ]
+    },
+    {
+      "name": "config get",
+      "description": "Retrieve a saved dashboard configuration by name or ID. Output: config metadata and full spec. Use when user wants to reuse a saved dashboard.",
+      "parameters": [
+        {
+          "name": "name_or_id",
+          "type": "argument",
+          "required": true,
+          "description": "Config name or UUID to retrieve."
+        }
+      ]
+    },
+    {
+      "name": "config match",
+      "description": "Find saved configs that match data schema. Input: JSON data via file or stdin. Output: matching configs ranked by relevance. Use when user provides data to suggest reusable templates.",
+      "parameters": [
+        {
+          "name": "data_file",
+          "type": "argument",
+          "required": false,
+          "description": "Path to JSON data file. If omitted, reads from stdin."
+        },
+        {
+          "name": "limit",
+          "type": "option",
+          "required": false,
+          "description": "Maximum matches to return. Default: 5."
+        }
+      ]
+    },
+    {
+      "name": "config delete",
+      "description": "Delete a saved configuration from the repository. Use when user wants to remove an old or unused dashboard template.",
+      "parameters": [
+        {
+          "name": "name_or_id",
+          "type": "argument",
+          "required": true,
+          "description": "Config name or UUID to delete."
         }
       ]
     }

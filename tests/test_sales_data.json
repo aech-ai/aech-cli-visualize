@@ -1,0 +1,27 @@
+{
+  "company": "Acme Corp",
+  "period": "Q4 2025",
+  "metrics": {
+    "total_revenue": 2450000,
+    "revenue_growth": 12.5,
+    "customer_count": 847,
+    "churn_rate": 2.1
+  },
+  "monthly_revenue": [
+    {"month": "October", "revenue": 780000, "new_customers": 45},
+    {"month": "November", "revenue": 820000, "new_customers": 52},
+    {"month": "December", "revenue": 850000, "new_customers": 61}
+  ],
+  "revenue_by_region": {
+    "North America": 1200000,
+    "Europe": 680000,
+    "Asia Pacific": 420000,
+    "Other": 150000
+  },
+  "top_products": [
+    {"name": "Enterprise Suite", "revenue": 980000, "units": 245},
+    {"name": "Professional Plan", "revenue": 720000, "units": 480},
+    {"name": "Starter Pack", "revenue": 450000, "units": 1250},
+    {"name": "Add-ons", "revenue": 300000, "units": 890}
+  ]
+}
