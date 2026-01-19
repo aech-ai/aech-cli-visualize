@@ -32,7 +32,7 @@ ENV/
 
 # Test outputs
 test_outputs/
-tests/output/
+tests/
 
 # Environment
 .env
