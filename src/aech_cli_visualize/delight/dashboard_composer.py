@@ -8,6 +8,7 @@ from typing import Any
 from ..themes.loader import load_theme
 from ..utils.export import FormatType, parse_resolution
 from .chart_renderer import render_chart_image
+from .visual_modes import get_visual_mode_profile, normalize_visual_mode
 
 
 def _import_pillow() -> tuple[Any, Any, Any, Any]:
@@ -45,23 +46,52 @@ class DelightDashboardComposer:
         "/Library/Fonts/Arial Bold.ttf",
     ]
 
-    def __init__(self, spec: dict[str, Any], theme: str | dict[str, Any] = "modern"):
+    def __init__(
+        self,
+        spec: dict[str, Any],
+        theme: str | dict[str, Any] = "modern",
+        visual_mode: str | None = None,
+        auto_annotate_charts: bool | None = None,
+    ):
         """Initialize delight composer."""
         self.spec = spec
         self.theme = load_theme(theme) if isinstance(theme, str) else theme
         self.layout = spec.get("layout", {})
         self.style = spec.get("style", {})
+        mode_from_spec = self.style.get("visual_mode")
+        resolved_mode = visual_mode if visual_mode is not None else mode_from_spec
+        self.visual_mode = normalize_visual_mode(resolved_mode)
+        self.mode_profile = get_visual_mode_profile(self.visual_mode)
+        self.dashboard_mode = self.mode_profile["dashboard"]
+        self.chart_mode = self.mode_profile["chart"]
 
         self.columns = int(self.layout.get("columns", 12))
         self.rows = int(self.layout.get("rows", 2))
         self.padding = int(self.layout.get("padding", 28))
 
-        self.font_scale = float(self.style.get("font_scale", 1.0))
+        self.font_scale = float(self.style.get("font_scale", self.dashboard_mode.get("font_scale", 1.0)))
         self.h_spacing = float(self.style.get("h_spacing", 0.03))
         self.v_spacing = float(self.style.get("v_spacing", 0.05))
-        self.widget_padding = int(self.style.get("widget_padding", 18))
-        self.show_cards = bool(self.style.get("show_cards", True))
+        self.widget_padding = int(
+            self.style.get("widget_padding", self.dashboard_mode.get("widget_padding", 18))
+        )
+        self.show_cards = bool(self.style.get("show_cards", self.dashboard_mode.get("show_cards", True)))
         self.row_heights_override = self.style.get("row_heights")
+        self.label_case = str(self.dashboard_mode.get("label_case", "title"))
+        self.gradient_strength = float(self.dashboard_mode.get("gradient_strength", 0.08))
+        self.card_radius = int(self.dashboard_mode.get("card_radius", 20))
+        self.card_border_width = int(self.dashboard_mode.get("card_border_width", 1))
+        self.shadow_alpha = int(self.dashboard_mode.get("shadow_alpha", 24))
+        self.shadow_blur = float(self.dashboard_mode.get("shadow_blur", 8))
+        self.shadow_offset_x = int(self.dashboard_mode.get("shadow_offset_x", 2))
+        self.shadow_offset_y = int(self.dashboard_mode.get("shadow_offset_y", 6))
+        self.title_size = int(self.dashboard_mode.get("title_size", 48))
+        self.title_weight_bold = bool(self.dashboard_mode.get("title_weight_bold", True))
+
+        if auto_annotate_charts is None:
+            self.auto_annotate_charts = bool(self.style.get("auto_annotate_charts", True))
+        else:
+            self.auto_annotate_charts = auto_annotate_charts
 
         self.Image, self.ImageDraw, self.ImageFont, self.ImageFilter = _import_pillow()
         self._font_cache: dict[tuple[int, bool], Any] = {}
@@ -92,13 +122,25 @@ class DelightDashboardComposer:
         ratio = max(0.0, min(1.0, ratio))
         return tuple(int((a[i] * (1.0 - ratio)) + (b[i] * ratio)) for i in range(3))
 
+    def _style_label(self, text: str) -> str:
+        """Apply visual-mode label casing."""
+        if self.label_case == "upper":
+            return text.upper()
+        if self.label_case == "lower":
+            return text.lower()
+        if self.label_case == "title":
+            return text.title()
+        return text
+
     def _paint_background(self, canvas: Any) -> None:
         """Paint a subtle vertical gradient background."""
         colors = self.theme["colors"]
         width, height = canvas.size
         top = _hex_to_rgb(colors["background"])
         accent = _hex_to_rgb(colors.get("secondary", colors["primary"]))
-        bottom = self._mix_color(top, accent, 0.08)
+        if self.gradient_strength <= 0:
+            return
+        bottom = self._mix_color(top, accent, self.gradient_strength)
 
         draw = self.ImageDraw.Draw(canvas, "RGBA")
         for y in range(height):
@@ -115,21 +157,28 @@ class DelightDashboardComposer:
     ) -> None:
         """Draw card surface with soft elevation."""
         x0, y0, x1, y1 = rect
-        shadow_layer = self.Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-        shadow_draw = self.ImageDraw.Draw(shadow_layer)
-        shadow_draw.rounded_rectangle(
-            (x0 + 2, y0 + 6, x1 + 2, y1 + 6),
-            radius=24,
-            fill=(15, 23, 42, 26),
-        )
-        shadow_layer = shadow_layer.filter(self.ImageFilter.GaussianBlur(radius=9))
-        canvas.alpha_composite(shadow_layer)
+        if self.shadow_alpha > 0:
+            shadow_layer = self.Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+            shadow_draw = self.ImageDraw.Draw(shadow_layer)
+            shadow_draw.rounded_rectangle(
+                (
+                    x0 + self.shadow_offset_x,
+                    y0 + self.shadow_offset_y,
+                    x1 + self.shadow_offset_x,
+                    y1 + self.shadow_offset_y,
+                ),
+                radius=self.card_radius + 2,
+                fill=(15, 23, 42, self.shadow_alpha),
+            )
+            if self.shadow_blur > 0:
+                shadow_layer = shadow_layer.filter(self.ImageFilter.GaussianBlur(radius=self.shadow_blur))
+            canvas.alpha_composite(shadow_layer)
         draw.rounded_rectangle(
             rect,
-            radius=22,
+            radius=self.card_radius,
             fill=_hex_to_rgb(colors["surface"]),
             outline=_hex_to_rgb(colors.get("card_border", colors["grid"])),
-            width=1,
+            width=self.card_border_width,
         )
 
     def _row_weights(self, widgets: list[dict[str, Any]]) -> list[float]:
@@ -202,7 +251,7 @@ class DelightDashboardComposer:
         colors = self.theme["colors"]
         pad = self.widget_padding
 
-        label = str(config.get("label", ""))
+        label = self._style_label(str(config.get("label", "")))
         value = config.get("value", 0)
         delta = config.get("delta")
         delta_good = bool(config.get("delta_good", True))
@@ -262,7 +311,7 @@ class DelightDashboardComposer:
         colors = self.theme["colors"]
         pad = self.widget_padding
 
-        label = str(config.get("label", ""))
+        label = self._style_label(str(config.get("label", "")))
         min_val = float(config.get("min", 0))
         max_val = float(config.get("max", 100))
         value = float(config.get("value", 0))
@@ -409,7 +458,7 @@ class DelightDashboardComposer:
         data = config.get("data", {})
         title = config.get("title")
 
-        title_font = self._load_font(int(24 * self.font_scale), bold=True)
+        title_font = self._load_font(int(self.chart_mode.get("title_size", 20) * self.font_scale), bold=True)
         chart_x = x0 + pad
         chart_y = y0 + pad
         chart_w = max(120, (x1 - x0) - (2 * pad))
@@ -435,6 +484,8 @@ class DelightDashboardComposer:
             show_legend=False,
             scale=2.0,
             embedded=True,
+            visual_mode=self.visual_mode,
+            auto_annotate=self.auto_annotate_charts,
         )
         resampling = getattr(self.Image, "Resampling", self.Image).LANCZOS
         chart_img = chart_img.resize((chart_w, chart_h), resampling)
@@ -500,7 +551,10 @@ class DelightDashboardComposer:
         # Title
         title = self.spec.get("title")
         if title:
-            title_font = self._load_font(int(48 * self.font_scale), bold=True)
+            title_font = self._load_font(
+                int(self.title_size * self.font_scale),
+                bold=self.title_weight_bold,
+            )
             draw.text(
                 (self.padding, self.padding),
                 str(title),

@@ -52,6 +52,18 @@
           "description": "Rendering backend. Values: delight, legacy. Default: delight."
         },
         {
+          "name": "visual-mode",
+          "type": "option",
+          "required": false,
+          "description": "Delight visual mode. Values: premium_executive, editorial, data_journal. Default: premium_executive."
+        },
+        {
+          "name": "annotations",
+          "type": "option",
+          "required": false,
+          "description": "Enable smart chart annotations. Default: true. Use --annotations or --no-annotations."
+        },
+        {
           "name": "format",
           "type": "option",
           "required": false,
@@ -238,6 +250,18 @@
           "description": "Rendering backend. Values: delight, legacy. Default: delight."
         },
         {
+          "name": "visual-mode",
+          "type": "option",
+          "required": false,
+          "description": "Delight visual mode. Values: premium_executive, editorial, data_journal. Default: premium_executive."
+        },
+        {
+          "name": "annotations",
+          "type": "option",
+          "required": false,
+          "description": "Enable smart chart annotations inside dashboard charts. Default: true. Use --annotations or --no-annotations."
+        },
+        {
           "name": "resolution",
           "type": "option",
           "required": false,
@@ -404,6 +428,18 @@
           "type": "option",
           "required": false,
           "description": "Rendering backend. Values: delight, legacy. Default: delight."
+        },
+        {
+          "name": "visual-mode",
+          "type": "option",
+          "required": false,
+          "description": "Delight visual mode. Values: premium_executive, editorial, data_journal. Default: premium_executive."
+        },
+        {
+          "name": "annotations",
+          "type": "option",
+          "required": false,
+          "description": "Enable smart chart annotations inside dashboard charts. Default: true. Use --annotations or --no-annotations."
         },
         {
           "name": "format",

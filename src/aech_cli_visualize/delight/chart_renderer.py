@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+import math
 from pathlib import Path
 from typing import Any
 
 from ..themes.loader import load_theme
 from ..utils.export import FormatType
+from .visual_modes import get_visual_mode_profile
 
 
 def _import_vl_convert() -> Any:
@@ -120,6 +122,7 @@ def _base_spec(
     width: int,
     height: int,
     theme: dict[str, Any],
+    chart_mode: dict[str, Any],
     show_legend: bool,
     embedded: bool = False,
 ) -> dict[str, Any]:
@@ -127,7 +130,11 @@ def _base_spec(
     colors = theme["colors"]
     chart = theme.get("chart", {})
     palette = chart.get("palette", [colors["primary"]])
-    grid_color = _mix_hex(colors.get("grid", "#d7deea"), colors.get("background", "#ffffff"), 0.22)
+    grid_color = _mix_hex(
+        colors.get("grid", "#d7deea"),
+        colors.get("background", "#ffffff"),
+        float(chart_mode.get("grid_mix", 0.22)),
+    )
 
     spec: dict[str, Any] = {
         "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
@@ -138,7 +145,7 @@ def _base_spec(
             "font": _primary_font(theme, "body"),
             "title": {
                 "font": _primary_font(theme, "title"),
-                "fontSize": 20,
+                "fontSize": int(chart_mode.get("title_size", 20)),
                 "anchor": "start",
                 "color": colors["text"],
                 "offset": 14,
@@ -148,11 +155,12 @@ def _base_spec(
                 "ticks": False,
                 "labelColor": colors["text_secondary"],
                 "titleColor": colors["text_secondary"],
-                "labelFontSize": 12,
-                "titleFontSize": 12,
+                "labelFontSize": int(chart_mode.get("axis_label_size", 12)),
+                "titleFontSize": int(chart_mode.get("axis_title_size", 12)),
                 "grid": False,
                 "gridColor": grid_color,
-                "gridWidth": 1,
+                "gridWidth": int(chart_mode.get("grid_width", 1)),
+                "gridDash": chart_mode.get("grid_dash", [1, 0]),
                 "labelPadding": 8,
             },
             "axisX": {
@@ -162,7 +170,7 @@ def _base_spec(
             },
             "axisY": {
                 "grid": chart.get("gridlines", True),
-                "tickCount": 6,
+                "tickCount": int(chart_mode.get("y_tick_count", 6)),
             },
             "legend": {
                 "disable": not show_legend,
@@ -211,6 +219,165 @@ def _compute_numeric_domain(values: list[Any]) -> list[float] | None:
     if low >= 0 and domain_low < 0:
         domain_low = max(0.0, low - (span * 0.04))
     return [domain_low, domain_high]
+
+
+def _coerce_float(value: Any) -> float | None:
+    """Convert a value to float when possible."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_compact_number(value: float) -> str:
+    """Format numeric values with compact suffixes."""
+    abs_value = abs(value)
+    if abs_value >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.1f}B"
+    if abs_value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if abs_value >= 1_000:
+        return f"{value / 1_000:.1f}k"
+    if abs_value >= 100:
+        return f"{value:.0f}"
+    if abs_value >= 10:
+        return f"{value:.1f}"
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _detect_smart_annotations(
+    records: list[dict[str, Any]],
+    x_key: str,
+    y_key: str,
+    max_annotations: int,
+) -> list[dict[str, Any]]:
+    """Detect peak/dip/jump/outlier points for authored-feeling annotations."""
+    indexed: list[tuple[int, float]] = []
+    for idx, record in enumerate(records):
+        y_val = _coerce_float(record.get(y_key))
+        if y_val is None:
+            continue
+        indexed.append((idx, y_val))
+
+    if len(indexed) < 3 or max_annotations <= 0:
+        return []
+
+    values = [value for _, value in indexed]
+    result: list[dict[str, Any]] = []
+    used_indices: set[int] = set()
+
+    max_pos = max(range(len(indexed)), key=lambda i: indexed[i][1])
+    min_pos = min(range(len(indexed)), key=lambda i: indexed[i][1])
+
+    def add_candidate(idx_in_records: int, label: str) -> None:
+        if idx_in_records in used_indices or len(result) >= max_annotations:
+            return
+        record = records[idx_in_records]
+        x_val = record.get(x_key)
+        y_val = _coerce_float(record.get(y_key))
+        if y_val is None or x_val is None:
+            return
+        used_indices.add(idx_in_records)
+        result.append(
+            {
+                "x": x_val,
+                "y": y_val,
+                "label": label,
+            }
+        )
+
+    max_idx, max_val = indexed[max_pos]
+    min_idx, min_val = indexed[min_pos]
+    add_candidate(max_idx, f"Peak { _format_compact_number(max_val) }")
+    if min_idx != max_idx:
+        add_candidate(min_idx, f"Dip { _format_compact_number(min_val) }")
+
+    best_jump_pos = -1
+    best_jump_delta = 0.0
+    for i in range(1, len(indexed)):
+        delta = indexed[i][1] - indexed[i - 1][1]
+        if abs(delta) > abs(best_jump_delta):
+            best_jump_delta = delta
+            best_jump_pos = i
+    if best_jump_pos > 0:
+        jump_idx, jump_value = indexed[best_jump_pos]
+        prev_value = indexed[best_jump_pos - 1][1]
+        direction = "Up" if best_jump_delta >= 0 else "Down"
+        if prev_value != 0:
+            pct = (best_jump_delta / abs(prev_value)) * 100.0
+            jump_label = f"{direction} {pct:+.1f}%"
+        else:
+            jump_label = f"{direction} { _format_compact_number(abs(best_jump_delta)) }"
+        if abs(best_jump_delta) > 0:
+            add_candidate(jump_idx, jump_label)
+
+    mean = sum(values) / len(values)
+    variance = sum((v - mean) ** 2 for v in values) / len(values)
+    stdev = math.sqrt(variance)
+    if stdev > 0:
+        outlier_idx = -1
+        outlier_z = 0.0
+        for idx_in_records, value in indexed:
+            z_score = (value - mean) / stdev
+            if abs(z_score) > abs(outlier_z):
+                outlier_z = z_score
+                outlier_idx = idx_in_records
+        if outlier_idx >= 0 and abs(outlier_z) >= 1.6:
+            add_candidate(outlier_idx, f"Outlier {outlier_z:+.1f}σ")
+
+    return result
+
+
+def _annotation_layers(
+    annotations: list[dict[str, Any]],
+    x_type: str,
+    colors: dict[str, Any],
+    chart_mode: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build Vega-Lite layers for annotation points and labels."""
+    if not annotations:
+        return []
+
+    accent = colors.get("accent", colors.get("secondary", colors["primary"]))
+    return [
+        {
+            "data": {"values": annotations},
+            "mark": {
+                "type": "point",
+                "filled": True,
+                "size": int(chart_mode.get("annotation_point_size", 95)),
+                "color": accent,
+                "stroke": colors.get("surface", "#ffffff"),
+                "strokeWidth": 2,
+            },
+            "encoding": {
+                "x": {"field": "x", "type": x_type, "sort": None},
+                "y": {"field": "y", "type": "quantitative"},
+            },
+        },
+        {
+            "data": {"values": annotations},
+            "mark": {
+                "type": "text",
+                "align": "left",
+                "baseline": "bottom",
+                "dx": int(chart_mode.get("annotation_dx", 10)),
+                "dy": int(chart_mode.get("annotation_dy", -10)),
+                "fontSize": int(chart_mode.get("annotation_font_size", 12)),
+                "fontWeight": "bold",
+                "color": colors["text"],
+            },
+            "encoding": {
+                "x": {"field": "x", "type": x_type, "sort": None},
+                "y": {"field": "y", "type": "quantitative"},
+                "text": {"field": "label", "type": "nominal"},
+            },
+        },
+    ]
 
 
 def _records_single_series(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -285,19 +452,29 @@ def build_chart_spec(
     title: str | None = None,
     show_legend: bool = True,
     embedded: bool = False,
+    visual_mode: str | None = None,
+    auto_annotate: bool = True,
 ) -> dict[str, Any]:
     """Build a Vega-Lite spec for a supported chart type."""
     theme_data = load_theme(theme) if isinstance(theme, str) else theme
+    mode_profile = get_visual_mode_profile(visual_mode)
+    chart_mode = mode_profile["chart"]
     palette = theme_data.get("chart", {}).get("palette", [theme_data["colors"]["primary"]])
     spec = _base_spec(
         width=width,
         height=height,
         theme=theme_data,
+        chart_mode=chart_mode,
         show_legend=show_legend,
         embedded=embedded,
     )
     if title:
         spec["title"] = title
+
+    annotation_limit = int(chart_mode.get("annotation_max", 3))
+    if embedded:
+        annotation_limit = min(annotation_limit, 2)
+    annotations_enabled = bool(chart_mode.get("annotations", True)) and auto_annotate
 
     x_values = data.get("x", [])
     x_type = _infer_x_type(x_values if isinstance(x_values, list) else [])
@@ -316,66 +493,96 @@ def build_chart_spec(
         multi_series = isinstance(data.get("series"), list)
         if multi_series:
             records = _records_multi_series(data)
-            spec.update(
-                {
-                    "data": {"values": records},
-                    "mark": {"type": "bar", "cornerRadiusTopLeft": 6, "cornerRadiusTopRight": 6},
-                    "encoding": {
-                        "x": {
-                            "field": "x",
-                            "type": "ordinal",
-                            "sort": None,
-                            "axis": {"title": None},
-                            "scale": {"paddingInner": 0.24, "paddingOuter": 0.08},
-                        },
-                        "xOffset": {"field": "series"},
-                        "y": {
-                            "field": "value",
-                            "type": "quantitative",
-                            "axis": {"title": None, "format": "~s"},
-                            "scale": {"zero": True, "nice": True},
-                        },
-                        "color": {"field": "series", "type": "nominal", "legend": {"title": None}},
-                        "tooltip": [
-                            {"field": "x", "type": "ordinal", "title": "Category"},
-                            {"field": "series", "type": "nominal", "title": "Series"},
-                            {"field": "value", "type": "quantitative", "title": "Value", "format": ",.2~s"},
-                        ],
-                    },
-                }
-            )
-        else:
-            records = _records_single_series(data)
+            base_encoding = {
+                "x": {
+                    "field": "x",
+                    "type": "ordinal",
+                    "sort": None,
+                    "axis": {"title": None},
+                    "scale": {"paddingInner": 0.24, "paddingOuter": 0.08},
+                },
+                "xOffset": {"field": "series"},
+                "y": {
+                    "field": "value",
+                    "type": "quantitative",
+                    "axis": {"title": None, "format": "~s"},
+                    "scale": {"zero": True, "nice": True},
+                },
+                "color": {"field": "series", "type": "nominal", "legend": {"title": None}},
+                "tooltip": [
+                    {"field": "x", "type": "ordinal", "title": "Category"},
+                    {"field": "series", "type": "nominal", "title": "Series"},
+                    {"field": "value", "type": "quantitative", "title": "Value", "format": ",.2~s"},
+                ],
+            }
             spec.update(
                 {
                     "data": {"values": records},
                     "mark": {
                         "type": "bar",
-                        "cornerRadiusTopLeft": 6,
-                        "cornerRadiusTopRight": 6,
-                        "color": palette[0],
+                        "cornerRadiusTopLeft": int(chart_mode.get("bar_radius", 6)),
+                        "cornerRadiusTopRight": int(chart_mode.get("bar_radius", 6)),
                     },
-                    "encoding": {
-                        "x": {
-                            "field": "x",
-                            "type": "ordinal",
-                            "sort": None,
-                            "axis": {"title": None},
-                            "scale": {"paddingInner": 0.24, "paddingOuter": 0.08},
-                        },
-                        "y": {
-                            "field": "y",
-                            "type": "quantitative",
-                            "axis": {"title": None, "format": "~s"},
-                            "scale": {"zero": True, "nice": True},
-                        },
-                        "tooltip": [
-                            {"field": "x", "type": "ordinal", "title": "Category"},
-                            {"field": "y", "type": "quantitative", "title": "Value", "format": ",.2~s"},
-                        ],
-                    },
+                    "encoding": base_encoding,
                 }
             )
+        else:
+            records = _records_single_series(data)
+            base_encoding = {
+                "x": {
+                    "field": "x",
+                    "type": "ordinal",
+                    "sort": None,
+                    "axis": {"title": None},
+                    "scale": {"paddingInner": 0.24, "paddingOuter": 0.08},
+                },
+                "y": {
+                    "field": "y",
+                    "type": "quantitative",
+                    "axis": {"title": None, "format": "~s"},
+                    "scale": {"zero": True, "nice": True},
+                },
+                "tooltip": [
+                    {"field": "x", "type": "ordinal", "title": "Category"},
+                    {"field": "y", "type": "quantitative", "title": "Value", "format": ",.2~s"},
+                ],
+            }
+            base_bar_mark = {
+                "type": "bar",
+                "cornerRadiusTopLeft": int(chart_mode.get("bar_radius", 6)),
+                "cornerRadiusTopRight": int(chart_mode.get("bar_radius", 6)),
+                "color": palette[0],
+            }
+            annotations = (
+                _detect_smart_annotations(records, x_key="x", y_key="y", max_annotations=annotation_limit)
+                if annotations_enabled
+                else []
+            )
+
+            if annotations:
+                spec.update(
+                    {
+                        "data": {"values": records},
+                        "encoding": base_encoding,
+                        "layer": [
+                            {"mark": base_bar_mark},
+                            *_annotation_layers(
+                                annotations=annotations,
+                                x_type="ordinal",
+                                colors=theme_data["colors"],
+                                chart_mode=chart_mode,
+                            ),
+                        ],
+                    }
+                )
+            else:
+                spec.update(
+                    {
+                        "data": {"values": records},
+                        "mark": base_bar_mark,
+                        "encoding": base_encoding,
+                    }
+                )
     elif chart_type == "line":
         multi_series = isinstance(data.get("series"), list)
         if multi_series:
@@ -385,9 +592,12 @@ def build_chart_spec(
                     "data": {"values": records},
                     "mark": {
                         "type": "line",
-                        "strokeWidth": 3,
-                        "interpolate": "monotone",
-                        "point": {"filled": True, "size": 52},
+                        "strokeWidth": float(chart_mode.get("line_width", 3)),
+                        "interpolate": str(chart_mode.get("line_interpolate", "monotone")),
+                        "point": {
+                            "filled": True,
+                            "size": int(chart_mode.get("point_size", 52)),
+                        },
                     },
                     "encoding": {
                         "x": {"field": "x", "type": x_type, "sort": None, "axis": {"title": None, "labelAngle": 0}},
@@ -412,92 +622,198 @@ def build_chart_spec(
             )
         else:
             records = _records_single_series(data)
-            spec.update(
-                {
-                    "data": {"values": records},
-                    "mark": {
-                        "type": "line",
-                        "strokeWidth": 3,
-                        "interpolate": "monotone",
-                        "point": {"filled": True, "size": 52},
-                        "color": palette[0],
-                    },
-                    "encoding": {
-                        "x": {"field": "x", "type": x_type, "sort": None, "axis": {"title": None, "labelAngle": 0}},
-                        "y": {
-                            "field": "y",
-                            "type": "quantitative",
-                            "axis": {"title": None, "format": "~s"},
-                            "scale": (
-                                {"domain": y_domain, "nice": True}
-                                if y_domain
-                                else {"zero": False, "nice": True}
-                            ),
-                        },
-                        "tooltip": [
-                            {"field": "x", "type": x_type, "title": "X"},
-                            {"field": "y", "type": "quantitative", "title": "Value", "format": ",.2~s"},
-                        ],
-                    },
-                }
+            base_encoding = {
+                "x": {"field": "x", "type": x_type, "sort": None, "axis": {"title": None, "labelAngle": 0}},
+                "y": {
+                    "field": "y",
+                    "type": "quantitative",
+                    "axis": {"title": None, "format": "~s"},
+                    "scale": (
+                        {"domain": y_domain, "nice": True}
+                        if y_domain
+                        else {"zero": False, "nice": True}
+                    ),
+                },
+                "tooltip": [
+                    {"field": "x", "type": x_type, "title": "X"},
+                    {"field": "y", "type": "quantitative", "title": "Value", "format": ",.2~s"},
+                ],
+            }
+            line_mark = {
+                "type": "line",
+                "strokeWidth": float(chart_mode.get("line_width", 3)),
+                "interpolate": str(chart_mode.get("line_interpolate", "monotone")),
+                "point": {
+                    "filled": True,
+                    "size": int(chart_mode.get("point_size", 52)),
+                },
+                "color": palette[0],
+            }
+            annotations = (
+                _detect_smart_annotations(records, x_key="x", y_key="y", max_annotations=annotation_limit)
+                if annotations_enabled
+                else []
             )
+            if annotations:
+                spec.update(
+                    {
+                        "data": {"values": records},
+                        "encoding": base_encoding,
+                        "layer": [
+                            {"mark": line_mark},
+                            *_annotation_layers(
+                                annotations=annotations,
+                                x_type=x_type,
+                                colors=theme_data["colors"],
+                                chart_mode=chart_mode,
+                            ),
+                        ],
+                    }
+                )
+            else:
+                spec.update(
+                    {
+                        "data": {"values": records},
+                        "mark": line_mark,
+                        "encoding": base_encoding,
+                    }
+                )
     elif chart_type == "area":
         records = _records_single_series(data)
+        baseline = None
+        if y_domain:
+            baseline = y_domain[0]
+        else:
+            numeric_vals = [record["y"] for record in records if isinstance(record.get("y"), (int, float))]
+            if numeric_vals:
+                baseline = float(min(numeric_vals))
+        if baseline is None:
+            baseline = 0.0
+        area_records = [{**record, "y0": baseline} for record in records]
+        line_encoding = {
+            "x": {"field": "x", "type": x_type, "sort": None, "axis": {"title": None, "labelAngle": 0}},
+            "y": {
+                "field": "y",
+                "type": "quantitative",
+                "axis": {"title": None, "format": "~s"},
+                "scale": (
+                    {"domain": y_domain, "nice": True}
+                    if y_domain
+                    else {"zero": False, "nice": True}
+                ),
+            },
+            "tooltip": [
+                {"field": "x", "type": x_type, "title": "X"},
+                {"field": "y", "type": "quantitative", "title": "Value", "format": ",.2~s"},
+            ],
+        }
+        area_encoding = {**line_encoding, "y2": {"field": "y0"}}
+        area_mark = {
+            "type": "area",
+            "opacity": float(chart_mode.get("area_opacity", 0.2)),
+            "color": palette[0],
+            "interpolate": str(chart_mode.get("line_interpolate", "monotone")),
+        }
+        line_mark = {
+            "type": "line",
+            "strokeWidth": float(max(2.0, chart_mode.get("line_width", 3) - 0.4)),
+            "interpolate": str(chart_mode.get("line_interpolate", "monotone")),
+            "point": {
+                "filled": True,
+                "size": int(chart_mode.get("point_size", 52)),
+            },
+            "color": palette[0],
+        }
+        annotations = (
+            _detect_smart_annotations(records, x_key="x", y_key="y", max_annotations=annotation_limit)
+            if annotations_enabled
+            else []
+        )
         spec.update(
             {
-                "data": {"values": records},
-                "mark": {
-                    "type": "area",
-                    "line": {"color": palette[0], "strokeWidth": 2.5},
-                    "opacity": 0.2,
-                    "color": palette[0],
-                    "interpolate": "monotone",
-                },
-                "encoding": {
-                    "x": {"field": "x", "type": x_type, "sort": None, "axis": {"title": None, "labelAngle": 0}},
-                    "y": {
-                        "field": "y",
-                        "type": "quantitative",
-                        "axis": {"title": None, "format": "~s"},
-                        "scale": (
-                            {"domain": y_domain, "nice": True}
-                            if y_domain
-                            else {"zero": False, "nice": True}
-                        ),
-                    },
-                    "tooltip": [
-                        {"field": "x", "type": x_type, "title": "X"},
-                        {"field": "y", "type": "quantitative", "title": "Value", "format": ",.2~s"},
-                    ],
-                },
+                "data": {"values": area_records},
+                "layer": [
+                    {"mark": area_mark, "encoding": area_encoding},
+                    {"mark": line_mark, "encoding": line_encoding},
+                    *(
+                        _annotation_layers(
+                            annotations=annotations,
+                            x_type=x_type,
+                            colors=theme_data["colors"],
+                            chart_mode=chart_mode,
+                        )
+                        if annotations
+                        else []
+                    ),
+                ],
             }
         )
     elif chart_type == "scatter":
         records = _records_single_series(data)
-        spec.update(
-            {
-                "data": {"values": records},
-                "mark": {"type": "point", "filled": True, "size": 90, "color": palette[0], "opacity": 0.9},
-                "encoding": {
-                    "x": {
-                        "field": "x",
-                        "type": "quantitative",
-                        "axis": {"title": None, "format": "~s"},
-                        "scale": {"zero": False, "nice": True},
-                    },
-                    "y": {
-                        "field": "y",
-                        "type": "quantitative",
-                        "axis": {"title": None, "format": "~s"},
-                        "scale": {"zero": False, "nice": True},
-                    },
-                    "tooltip": [
-                        {"field": "x", "type": "quantitative", "title": "X", "format": ",.2~s"},
-                        {"field": "y", "type": "quantitative", "title": "Y", "format": ",.2~s"},
-                    ],
-                },
-            }
+        x_domain = _compute_numeric_domain(
+            [record.get("x") for record in records if isinstance(record.get("x"), (int, float))]
         )
+        y_domain_scatter = _compute_numeric_domain(
+            [record.get("y") for record in records if isinstance(record.get("y"), (int, float))]
+        )
+        base_encoding = {
+            "x": {
+                "field": "x",
+                "type": "quantitative",
+                "axis": {"title": None, "format": "~s"},
+                "scale": {"domain": x_domain, "nice": True} if x_domain else {"zero": False, "nice": True},
+            },
+            "y": {
+                "field": "y",
+                "type": "quantitative",
+                "axis": {"title": None, "format": "~s"},
+                "scale": (
+                    {"domain": y_domain_scatter, "nice": True}
+                    if y_domain_scatter
+                    else {"zero": False, "nice": True}
+                ),
+            },
+            "tooltip": [
+                {"field": "x", "type": "quantitative", "title": "X", "format": ",.2~s"},
+                {"field": "y", "type": "quantitative", "title": "Y", "format": ",.2~s"},
+            ],
+        }
+        base_mark = {
+            "type": "point",
+            "filled": True,
+            "size": int(max(70, chart_mode.get("point_size", 52) * 1.6)),
+            "color": palette[0],
+            "opacity": 0.9,
+        }
+        annotations = (
+            _detect_smart_annotations(records, x_key="x", y_key="y", max_annotations=annotation_limit)
+            if annotations_enabled
+            else []
+        )
+        if annotations:
+            spec.update(
+                {
+                    "data": {"values": records},
+                    "encoding": base_encoding,
+                    "layer": [
+                        {"mark": base_mark},
+                        *_annotation_layers(
+                            annotations=annotations,
+                            x_type="quantitative",
+                            colors=theme_data["colors"],
+                            chart_mode=chart_mode,
+                        ),
+                    ],
+                }
+            )
+        else:
+            spec.update(
+                {
+                    "data": {"values": records},
+                    "mark": base_mark,
+                    "encoding": base_encoding,
+                }
+            )
     elif chart_type == "heatmap":
         records = _records_heatmap(data)
         spec.update(
@@ -553,6 +869,8 @@ def render_chart_image(
     show_legend: bool = True,
     scale: float = 1.0,
     embedded: bool = False,
+    visual_mode: str | None = None,
+    auto_annotate: bool = True,
 ) -> Any:
     """Render a chart as a PIL image."""
     vlc = _import_vl_convert()
@@ -567,6 +885,8 @@ def render_chart_image(
         title=title,
         show_legend=show_legend,
         embedded=embedded,
+        visual_mode=visual_mode,
+        auto_annotate=auto_annotate,
     )
     png_bytes = vlc.vegalite_to_png(spec, scale=scale)
     return Image.open(BytesIO(png_bytes)).convert("RGBA")
@@ -584,6 +904,8 @@ def render_chart_file(
     title: str | None = None,
     show_legend: bool = True,
     scale: float = 1.0,
+    visual_mode: str | None = None,
+    auto_annotate: bool = True,
 ) -> Path:
     """Render a chart to a file path using the delight backend."""
     output_path = Path(output_dir)
@@ -601,6 +923,8 @@ def render_chart_file(
             title=title,
             show_legend=show_legend,
             embedded=False,
+            visual_mode=visual_mode,
+            auto_annotate=auto_annotate,
         )
         svg_text = vlc.vegalite_to_svg(spec)
         file_path.write_text(svg_text, encoding="utf-8")
@@ -616,6 +940,8 @@ def render_chart_file(
         show_legend=show_legend,
         scale=scale,
         embedded=False,
+        visual_mode=visual_mode,
+        auto_annotate=auto_annotate,
     )
 
     if format == "pdf":

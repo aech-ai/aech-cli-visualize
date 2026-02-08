@@ -7,6 +7,7 @@ from typing import Annotated, Optional
 
 import typer
 
+from .delight.visual_modes import normalize_visual_mode
 from .dashboard.composer import DashboardComposer
 from .themes.loader import get_available_themes
 from .utils.data import parse_data_input
@@ -45,6 +46,14 @@ def chart_command(
     title: Annotated[Optional[str], typer.Option("--title", help="Chart title")] = None,
     theme: Annotated[str, typer.Option("--theme", help="Visual theme")] = "corporate",
     backend: Annotated[str, typer.Option("--backend", help="Rendering backend: delight or legacy")] = "delight",
+    visual_mode: Annotated[
+        str,
+        typer.Option("--visual-mode", help="Delight visual mode: premium_executive, editorial, data_journal"),
+    ] = "premium_executive",
+    annotations: Annotated[
+        bool,
+        typer.Option("--annotations/--no-annotations", help="Enable smart chart annotations"),
+    ] = True,
     format: Annotated[str, typer.Option("--format", help="Output format: png, svg, pdf")] = "png",
 ) -> None:
     """Render a chart from data.
@@ -72,9 +81,11 @@ def chart_command(
             })
             raise typer.Exit(1)
 
+        resolved_visual_mode: str | None = None
         if backend == "delight":
             from .delight import render_chart_file
 
+            resolved_visual_mode = normalize_visual_mode(visual_mode)
             output_path = render_chart_file(
                 chart_type=chart_type,
                 data=data,
@@ -87,6 +98,8 @@ def chart_command(
                 title=title,
                 show_legend=True,
                 scale=1.0,
+                visual_mode=resolved_visual_mode,
+                auto_annotate=annotations,
             )
         else:
             # Legacy Plotly renderer
@@ -107,6 +120,8 @@ def chart_command(
             "success": True,
             "output_files": [get_file_info(output_path)],
             "backend": "delight" if backend == "delight" else "legacy",
+            "visual_mode": resolved_visual_mode if backend == "delight" else None,
+            "annotations": annotations if backend == "delight" else None,
             "message": "Chart rendered successfully",
         })
 
@@ -284,6 +299,14 @@ def dashboard_command(
     output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output image")] = ".",
     theme: Annotated[str, typer.Option("--theme", help="Visual theme for all widgets")] = "corporate",
     backend: Annotated[str, typer.Option("--backend", help="Rendering backend: delight or legacy")] = "delight",
+    visual_mode: Annotated[
+        str,
+        typer.Option("--visual-mode", help="Delight visual mode: premium_executive, editorial, data_journal"),
+    ] = "premium_executive",
+    annotations: Annotated[
+        bool,
+        typer.Option("--annotations/--no-annotations", help="Enable smart chart annotations"),
+    ] = True,
     resolution: Annotated[str, typer.Option("--resolution", help="Output resolution: 1080p, 4k, or WxH")] = "1080p",
     format: Annotated[str, typer.Option("--format", help="Output format: png, svg, pdf")] = "png",
     vlm_validate: Annotated[bool, typer.Option("--vlm-validate/--no-vlm-validate", help="Enable VLM validation loop")] = False,
@@ -311,10 +334,17 @@ def dashboard_command(
 
         use_delight_backend = backend == "delight" and not vlm_validate and format != "svg"
 
+        resolved_visual_mode: str | None = None
         if use_delight_backend:
             from .delight import DelightDashboardComposer
 
-            composer = DelightDashboardComposer(spec=spec, theme=theme)
+            resolved_visual_mode = normalize_visual_mode(visual_mode)
+            composer = DelightDashboardComposer(
+                spec=spec,
+                theme=theme,
+                visual_mode=resolved_visual_mode,
+                auto_annotate_charts=annotations,
+            )
             output_path = composer.render(
                 output_dir=output_dir,
                 filename="dashboard",
@@ -331,6 +361,8 @@ def dashboard_command(
                     "height": height,
                 }],
                 "backend": "delight",
+                "visual_mode": resolved_visual_mode,
+                "annotations": annotations,
                 "message": "Dashboard rendered successfully",
             })
             return
@@ -678,6 +710,14 @@ def iterate_command(
     output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output")] = ".",
     theme: Annotated[str, typer.Option("--theme", help="Visual theme")] = "corporate",
     backend: Annotated[str, typer.Option("--backend", help="Rendering backend: delight or legacy")] = "delight",
+    visual_mode: Annotated[
+        str,
+        typer.Option("--visual-mode", help="Delight visual mode: premium_executive, editorial, data_journal"),
+    ] = "premium_executive",
+    annotations: Annotated[
+        bool,
+        typer.Option("--annotations/--no-annotations", help="Enable smart chart annotations"),
+    ] = True,
     format: Annotated[str, typer.Option("--format", help="Output format: png, svg, pdf")] = "png",
     resolution: Annotated[str, typer.Option("--resolution", help="Output resolution")] = "1080p",
     save_spec: Annotated[bool, typer.Option("--save-spec/--no-save-spec", help="Save modified spec to output dir")] = True,
@@ -728,10 +768,17 @@ def iterate_command(
         new_spec = modifier.apply_modifications(spec, modifications)
 
         # Render with new spec
+        resolved_visual_mode: str | None = None
         if backend == "delight" and format != "svg":
             from .delight import DelightDashboardComposer
 
-            composer = DelightDashboardComposer(new_spec, theme=theme)
+            resolved_visual_mode = normalize_visual_mode(visual_mode)
+            composer = DelightDashboardComposer(
+                new_spec,
+                theme=theme,
+                visual_mode=resolved_visual_mode,
+                auto_annotate_charts=annotations,
+            )
             output_path = composer.render(
                 output_dir=output_dir,
                 filename="dashboard",
@@ -766,6 +813,8 @@ def iterate_command(
             "output_files": [file_info],
             "spec_file": str(spec_path) if spec_path else None,
             "backend": "delight" if backend == "delight" and format != "svg" else "legacy",
+            "visual_mode": resolved_visual_mode if backend == "delight" and format != "svg" else None,
+            "annotations": annotations if backend == "delight" and format != "svg" else None,
             "modifications": {
                 "reasoning": modifications.reasoning,
                 "style_changes": modifications.style.model_dump(exclude_none=True) if modifications.style else {},
