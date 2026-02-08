@@ -43,6 +43,18 @@ class StyleModification(BaseModel):
         None,
         description="Space reserved for title area (-0.15 to 0.15). NEGATIVE values push content UP toward title. Use -0.06 to -0.10 to move top row closer to title.",
     )
+    show_cards: bool | None = Field(
+        None,
+        description="Whether widgets should render on visible card backgrounds.",
+    )
+    show_legend: bool | None = Field(
+        None,
+        description="Whether chart legends should be visible globally.",
+    )
+    row_heights: list[float] | None = Field(
+        None,
+        description="Relative row heights for layout balance (e.g., [0.8, 1.2]).",
+    )
 
 
 class WidgetModification(BaseModel):
@@ -113,6 +125,9 @@ MODIFICATION_INSTRUCTIONS = """You are an expert dashboard designer with deep kn
 | title_margin | -0.15-0.15 | Space for title. **NEGATIVE values push content UP** toward title. Use -0.06 to -0.10 to move top row closer to title. |
 | widget_padding | 10-40 | Internal padding in pixels |
 | title_size | 20-42 | Dashboard title size in pixels |
+| show_cards | true/false | Enable/disable card surfaces around widgets |
+| show_legend | true/false | Show/hide chart legends globally |
+| row_heights | list | Relative row heights, e.g., [0.8, 1.2] for compact KPIs + larger chart row |
 
 ## Decision Framework
 
@@ -248,6 +263,12 @@ Be BOLD with changes - small tweaks won't fix significant visual problems."""
                 new_spec["style"]["title_size"] = style_mod.title_size
             if style_mod.title_margin is not None:
                 new_spec["style"]["title_margin"] = style_mod.title_margin
+            if style_mod.show_cards is not None:
+                new_spec["style"]["show_cards"] = style_mod.show_cards
+            if style_mod.show_legend is not None:
+                new_spec["style"]["show_legend"] = style_mod.show_legend
+            if style_mod.row_heights is not None:
+                new_spec["style"]["row_heights"] = style_mod.row_heights
 
         # Apply layout changes
         if modifications.layout_changes:

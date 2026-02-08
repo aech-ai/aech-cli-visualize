@@ -39,7 +39,8 @@ def generate_spec(analysis: dict, answers: dict) -> dict:
     suggested_widgets = analysis.get("analysis", {}).get("suggested_widgets", [])
 
     # Determine layout based on purpose
-    if "executive" in purpose.lower():
+    is_executive = "executive" in purpose.lower()
+    if is_executive:
         # Executive: KPIs prominent, one main chart
         rows = 2
         kpi_count = min(3, len([w for w in suggested_widgets if w.get("widget_type") == "kpi"]))
@@ -59,6 +60,8 @@ def generate_spec(analysis: dict, answers: dict) -> dict:
 
     # Add KPI widgets
     kpi_suggestions = [w for w in suggested_widgets if w.get("widget_type") == "kpi"]
+    gauge_suggestions = [w for w in suggested_widgets if w.get("widget_type") == "gauge"]
+    include_gauge = bool(gauge_suggestions) and rows == 2
 
     # Filter by key_metrics if specified
     if key_metrics:
@@ -67,23 +70,94 @@ def generate_spec(analysis: dict, answers: dict) -> dict:
             if any(m in w.get("data_fields", []) for m in key_metrics)
         ] or kpi_suggestions[:kpi_count]
 
-    kpi_colspan = 12 // max(kpi_count, 1)
+    if include_gauge and is_executive:
+        kpi_count = min(2, max(1, kpi_count))
+        top_row_widget_count = kpi_count + 1
+    else:
+        top_row_widget_count = max(kpi_count, 1)
+
+    kpi_colspan = 12 // top_row_widget_count
     for i, kpi in enumerate(kpi_suggestions[:kpi_count]):
         field_name = kpi.get("data_fields", ["value"])[0]
         # Find field analysis for this field
         field_info = next((f for f in fields if f.get("name") == field_name), {})
         summary = field_info.get("summary", {})
+        lower_name = field_name.lower()
+
+        if "revenue" in lower_name and not any(
+            token in lower_name for token in ("growth", "rate", "ratio", "pct", "percent")
+        ):
+            format_value = "${:,.0f}"
+        elif any(token in lower_name for token in ("growth", "rate", "ratio", "pct", "percent", "churn")):
+            format_value = "{:.1f}%"
+        else:
+            format_value = "{:,.0f}"
 
         widgets.append({
             "type": "kpi",
             "position": {"row": 0, "col": col, "rowspan": 1, "colspan": kpi_colspan},
             "config": {
                 "value": summary.get("mean", summary.get("max", 0)),
-                "label": field_name.replace("_", " ").title(),
-                "format_value": "${:,.0f}" if "revenue" in field_name.lower() else "{:,.0f}",
+                "label": _humanize_field_name(field_name),
+                "format_value": format_value,
             }
         })
         col += kpi_colspan
+
+    # Add gauge as the last card in the top row when available.
+    if include_gauge:
+        gauge = gauge_suggestions[0]
+        field_name = gauge.get("data_fields", ["value"])[0]
+        field_info = next((f for f in fields if f.get("name") == field_name), {})
+        summary = field_info.get("summary", {})
+        metric_name = _humanize_field_name(field_name)
+
+        # Infer sensible scale for score/rate metrics.
+        raw_value = float(summary.get("mean", summary.get("max", 0)))
+        gauge_value = raw_value
+        gauge_min = float(summary.get("min", 0))
+        gauge_max = float(summary.get("max", 100))
+        gauge_unit = ""
+        lower_name = field_name.lower()
+        if any(token in lower_name for token in ("nps", "score", "satisfaction", "utilization")):
+            gauge_min = 0
+            gauge_max = 100
+            gauge_unit = "%"
+        elif any(token in lower_name for token in ("rate", "ratio", "pct", "percent", "growth", "churn")):
+            gauge_unit = "%"
+            observed_max = max(gauge_max, raw_value)
+            if observed_max <= 1:
+                gauge_value = raw_value * 100
+                gauge_min = 0
+                gauge_max = 100
+            elif observed_max <= 10:
+                gauge_min = 0
+                gauge_max = 10
+            elif observed_max <= 25:
+                gauge_min = 0
+                gauge_max = 25
+            else:
+                gauge_min = 0
+                gauge_max = 100
+        if gauge_max <= gauge_min:
+            gauge_max = gauge_min + 100
+
+        if any(token in lower_name for token in ("churn", "error", "latency", "defect", "failure")):
+            gauge_target = round(gauge_max * 0.3, 2)
+        else:
+            gauge_target = round(gauge_max * 0.9, 2)
+        widgets.append({
+            "type": "gauge",
+            "position": {"row": 0, "col": col, "rowspan": 1, "colspan": kpi_colspan},
+            "config": {
+                "value": gauge_value,
+                "min": gauge_min,
+                "max": gauge_max,
+                "target": gauge_target,
+                "label": metric_name,
+                "unit": gauge_unit,
+            }
+        })
 
     # Add chart widgets based on patterns
     chart_row = 1
@@ -110,7 +184,7 @@ def generate_spec(analysis: dict, answers: dict) -> dict:
                 "position": {"row": chart_row, "col": chart_col, "rowspan": 1, "colspan": 6},
                 "config": {
                     "chart_type": "line",
-                    "title": f"{y_fields[0].replace('_', ' ').title()} Over Time" if y_fields else "Trend",
+                    "title": f"{_humanize_field_name(y_fields[0])} Over Time" if y_fields else "Trend",
                     "data": {
                         "x": x_data.get("sample_values", []),
                         "y": y_data.get("sample_values", []),
@@ -132,7 +206,7 @@ def generate_spec(analysis: dict, answers: dict) -> dict:
                 "position": {"row": chart_row, "col": chart_col, "rowspan": 1, "colspan": 6},
                 "config": {
                     "chart_type": "bar",
-                    "title": f"{y_field.replace('_', ' ').title()} by {x_field.replace('_', ' ').title()}",
+                    "title": f"{_humanize_field_name(y_field)} by {_humanize_field_name(x_field)}",
                     "data": {
                         "x": x_data.get("sample_values", []),
                         "y": y_data.get("sample_values", []),
@@ -153,6 +227,12 @@ def generate_spec(analysis: dict, answers: dict) -> dict:
             "rows": rows,
             "aspect_ratio": "16:9",
         },
+        "style": {
+            "preset": "default",
+            "show_cards": True,
+            "show_legend": False,
+            "row_heights": [0.82, 1.22] if rows == 2 else [0.8, 1.0, 1.2],
+        },
         "widgets": widgets,
     }
 
@@ -165,6 +245,27 @@ def _extract_field_data(fields: list, field_name: str) -> dict:
         if field.get("name") == field_name:
             return field
     return {}
+
+
+def _humanize_field_name(field_name: str) -> str:
+    """Format field names for UI labels/titles."""
+    raw_parts = [part.replace("_", " ").strip() for part in field_name.split(".") if part.strip()]
+    if raw_parts and raw_parts[0].lower() == "metrics":
+        raw_parts = raw_parts[1:]
+
+    if raw_parts:
+        time_tokens = {"month", "date", "time", "quarter", "year", "week", "day"}
+        tail = raw_parts[-1].lower()
+        if len(raw_parts) >= 2 and tail in time_tokens:
+            return raw_parts[-1].title()
+
+    words: list[str] = []
+    for part in raw_parts:
+        for word in part.split():
+            if not words or words[-1].lower() != word.lower():
+                words.append(word)
+
+    return " ".join(words).title()
 
 
 def _generate_title(answers: dict, fields: list) -> str:

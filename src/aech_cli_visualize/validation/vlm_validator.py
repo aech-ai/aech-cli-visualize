@@ -27,6 +27,12 @@ Analyze the rendered dashboard image and check for these visual issues:
 
 6. **SIZING**: Charts too small to interpret data, KPIs disproportionate to their importance. Size should match content.
 
+Evaluate not only correctness but executive polish:
+- Clear visual hierarchy (headline KPIs first, analytical charts second)
+- Modern readability (not overly dense gridlines, text contrast, concise titles)
+- Intentional whitespace (no awkward voids, no cramped blocks)
+- Consistent card rhythm/alignment across the canvas
+
 For each issue detected:
 - Identify which widget(s) are affected by their index (0-indexed based on the spec)
 - Rate severity: "critical" (unusable), "major" (significantly impairs readability), "minor" (noticeable but acceptable)

@@ -44,6 +44,7 @@ def chart_command(
     output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output image")] = ".",
     title: Annotated[Optional[str], typer.Option("--title", help="Chart title")] = None,
     theme: Annotated[str, typer.Option("--theme", help="Visual theme")] = "corporate",
+    backend: Annotated[str, typer.Option("--backend", help="Rendering backend: delight or legacy")] = "delight",
     format: Annotated[str, typer.Option("--format", help="Output format: png, svg, pdf")] = "png",
 ) -> None:
     """Render a chart from data.
@@ -64,24 +65,49 @@ def chart_command(
             })
             raise typer.Exit(1)
 
-        # Create and render widget
-        widget = ChartWidget(
-            chart_type=chart_type,  # type: ignore
-            data=data,
-            title=title,
-            theme=theme,
-        )
+        if backend not in ("delight", "legacy", "plotly"):
+            output_json({
+                "success": False,
+                "error": "Invalid backend. Supported values: delight, legacy",
+            })
+            raise typer.Exit(1)
 
-        output_path = widget.render(
-            output_dir=output_dir,
-            filename="chart",
-            format=format,  # type: ignore
-        )
+        if backend == "delight":
+            from .delight import render_chart_file
+
+            output_path = render_chart_file(
+                chart_type=chart_type,
+                data=data,
+                output_dir=output_dir,
+                filename="chart",
+                format=format,  # type: ignore
+                width=1920,
+                height=1080,
+                theme=theme,
+                title=title,
+                show_legend=True,
+                scale=1.0,
+            )
+        else:
+            # Legacy Plotly renderer
+            widget = ChartWidget(
+                chart_type=chart_type,  # type: ignore
+                data=data,
+                title=title,
+                theme=theme,
+            )
+
+            output_path = widget.render(
+                output_dir=output_dir,
+                filename="chart",
+                format=format,  # type: ignore
+            )
 
         output_json({
             "success": True,
             "output_files": [get_file_info(output_path)],
-            "message": f"Chart rendered successfully",
+            "backend": "delight" if backend == "delight" else "legacy",
+            "message": "Chart rendered successfully",
         })
 
     except Exception as e:
@@ -206,6 +232,7 @@ def gauge_command(
     min_val: Annotated[float, typer.Option("--min", help="Minimum gauge value")] = 0,
     max_val: Annotated[float, typer.Option("--max", help="Maximum gauge value")] = 100,
     label: Annotated[Optional[str], typer.Option("--label", help="Label describing the metric")] = None,
+    target: Annotated[Optional[float], typer.Option("--target", help="Optional target marker value")] = None,
     thresholds: Annotated[Optional[str], typer.Option("--thresholds", help="JSON array of threshold objects")] = None,
     theme: Annotated[str, typer.Option("--theme", help="Visual theme")] = "corporate",
     format: Annotated[str, typer.Option("--format", help="Output format: png, svg, pdf")] = "png",
@@ -226,6 +253,7 @@ def gauge_command(
             min_val=min_val,
             max_val=max_val,
             label=label,
+            target=target,
             thresholds=threshold_list,
             theme=theme,
         )
@@ -255,6 +283,7 @@ def dashboard_command(
     spec_file: Annotated[Optional[str], typer.Argument(help="Path to dashboard spec JSON (reads stdin if omitted)")] = None,
     output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output image")] = ".",
     theme: Annotated[str, typer.Option("--theme", help="Visual theme for all widgets")] = "corporate",
+    backend: Annotated[str, typer.Option("--backend", help="Rendering backend: delight or legacy")] = "delight",
     resolution: Annotated[str, typer.Option("--resolution", help="Output resolution: 1080p, 4k, or WxH")] = "1080p",
     format: Annotated[str, typer.Option("--format", help="Output format: png, svg, pdf")] = "png",
     vlm_validate: Annotated[bool, typer.Option("--vlm-validate/--no-vlm-validate", help="Enable VLM validation loop")] = False,
@@ -273,6 +302,40 @@ def dashboard_command(
         spec = parse_data_input(spec_file)
         width, height = parse_resolution(resolution)
 
+        if backend not in ("delight", "legacy", "plotly"):
+            output_json({
+                "success": False,
+                "error": "Invalid backend. Supported values: delight, legacy",
+            })
+            raise typer.Exit(1)
+
+        use_delight_backend = backend == "delight" and not vlm_validate and format != "svg"
+
+        if use_delight_backend:
+            from .delight import DelightDashboardComposer
+
+            composer = DelightDashboardComposer(spec=spec, theme=theme)
+            output_path = composer.render(
+                output_dir=output_dir,
+                filename="dashboard",
+                format=format,  # type: ignore
+                resolution=resolution,
+                scale=1.0,
+            )
+
+            output_json({
+                "success": True,
+                "output_files": [{
+                    **get_file_info(output_path),
+                    "width": width,
+                    "height": height,
+                }],
+                "backend": "delight",
+                "message": "Dashboard rendered successfully",
+            })
+            return
+
+        # Legacy path (explicit or automatic fallback).
         if vlm_validate:
             # Use validated composer with VLM feedback loop
             from .dashboard.validated_composer import ValidatedDashboardComposer
@@ -328,6 +391,7 @@ def dashboard_command(
                     "width": width,
                     "height": height,
                 }],
+                "backend": "legacy",
                 "validation": validation_info,
                 "message": f"Dashboard rendered after {result.iterations} iteration(s)",
             }
@@ -357,6 +421,7 @@ def dashboard_command(
                     "width": width,
                     "height": height,
                 }],
+                "backend": "legacy",
                 "message": "Dashboard rendered successfully",
             })
 
@@ -612,6 +677,7 @@ def iterate_command(
     previous_image: Annotated[Optional[str], typer.Option("--previous-image", help="Path to previous render for visual context")] = None,
     output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output")] = ".",
     theme: Annotated[str, typer.Option("--theme", help="Visual theme")] = "corporate",
+    backend: Annotated[str, typer.Option("--backend", help="Rendering backend: delight or legacy")] = "delight",
     format: Annotated[str, typer.Option("--format", help="Output format: png, svg, pdf")] = "png",
     resolution: Annotated[str, typer.Option("--resolution", help="Output resolution")] = "1080p",
     save_spec: Annotated[bool, typer.Option("--save-spec/--no-save-spec", help="Save modified spec to output dir")] = True,
@@ -635,6 +701,13 @@ def iterate_command(
             })
             raise typer.Exit(1)
 
+        if backend not in ("delight", "legacy", "plotly"):
+            output_json({
+                "success": False,
+                "error": "Invalid backend. Supported values: delight, legacy",
+            })
+            raise typer.Exit(1)
+
         # Parse input spec
         spec = parse_data_input(spec_file)
 
@@ -655,13 +728,25 @@ def iterate_command(
         new_spec = modifier.apply_modifications(spec, modifications)
 
         # Render with new spec
-        composer = DashboardComposer(new_spec, theme=theme)
-        output_path = composer.render(
-            output_dir=output_dir,
-            filename="dashboard",
-            format=format,  # type: ignore
-            resolution=resolution,
-        )
+        if backend == "delight" and format != "svg":
+            from .delight import DelightDashboardComposer
+
+            composer = DelightDashboardComposer(new_spec, theme=theme)
+            output_path = composer.render(
+                output_dir=output_dir,
+                filename="dashboard",
+                format=format,  # type: ignore
+                resolution=resolution,
+                scale=1.0,
+            )
+        else:
+            composer = DashboardComposer(new_spec, theme=theme)
+            output_path = composer.render(
+                output_dir=output_dir,
+                filename="dashboard",
+                format=format,  # type: ignore
+                resolution=resolution,
+            )
 
         # Add image dimensions
         width, height = parse_resolution(resolution)
@@ -680,6 +765,7 @@ def iterate_command(
             "success": True,
             "output_files": [file_info],
             "spec_file": str(spec_path) if spec_path else None,
+            "backend": "delight" if backend == "delight" and format != "svg" else "legacy",
             "modifications": {
                 "reasoning": modifications.reasoning,
                 "style_changes": modifications.style.model_dump(exclude_none=True) if modifications.style else {},

@@ -308,15 +308,17 @@ Dashboard specs support a `style` section for fine-tuning layout and fonts:
 | `h_spacing` | Horizontal gap between widgets | 0.01 - 0.15 |
 | `v_spacing` | Vertical gap between widgets | 0.01 - 0.15 |
 | `title_size` | Dashboard title font size in pixels | 16 - 48 |
+| `show_cards` | Render widgets on card surfaces | true/false |
+| `row_heights` | Relative per-row heights (e.g. `[0.8, 1.2]`) | list of numbers |
 
 **Preset defaults:**
 
 | Preset | font_scale | h_spacing | v_spacing |
 |--------|------------|-----------|-----------|
-| compact | 0.8 | 0.015 | 0.03 |
-| default | 1.0 | 0.02 | 0.04 |
-| presentation | 1.4 | 0.035 | 0.06 |
-| spacious | 1.2 | 0.04 | 0.07 |
+| compact | 0.9 | 0.02 | 0.035 |
+| default | 1.05 | 0.03 | 0.05 |
+| presentation | 1.3 | 0.05 | 0.07 |
+| spacious | 1.15 | 0.05 | 0.08 |
 
 ## Iterate Command
 

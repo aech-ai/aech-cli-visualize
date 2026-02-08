@@ -40,6 +40,12 @@
           "description": "Visual theme. Values: corporate, modern, minimal, dark, light. Default: corporate."
         },
         {
+          "name": "backend",
+          "type": "option",
+          "required": false,
+          "description": "Rendering backend. Values: delight, legacy. Default: delight."
+        },
+        {
           "name": "format",
           "type": "option",
           "required": false,
@@ -172,6 +178,12 @@
           "description": "Label describing the metric."
         },
         {
+          "name": "target",
+          "type": "option",
+          "required": false,
+          "description": "Optional target value to display as a marker."
+        },
+        {
           "name": "thresholds",
           "type": "option",
           "required": false,
@@ -212,6 +224,12 @@
           "type": "option",
           "required": false,
           "description": "Visual theme applied to all widgets. Values: corporate, modern, minimal, dark, light. Default: corporate."
+        },
+        {
+          "name": "backend",
+          "type": "option",
+          "required": false,
+          "description": "Rendering backend. Values: delight, legacy. Default: delight."
         },
         {
           "name": "resolution",

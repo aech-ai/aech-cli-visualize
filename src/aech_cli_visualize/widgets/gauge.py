@@ -18,6 +18,7 @@ class GaugeWidget(BaseWidget):
         label: str | None = None,
         unit: str = "",
         thresholds: list[dict[str, Any]] | None = None,
+        target: float | None = None,
         theme: str | dict[str, Any] = "corporate",
     ):
         """Initialize gauge widget.
@@ -29,6 +30,7 @@ class GaugeWidget(BaseWidget):
             label: Label describing the metric
             unit: Unit suffix (e.g., '%', 'ms')
             thresholds: List of threshold dicts with value, color, label
+            target: Optional target marker value
             theme: Theme name or dictionary
         """
         config = {
@@ -38,6 +40,7 @@ class GaugeWidget(BaseWidget):
             "label": label,
             "unit": unit,
             "thresholds": thresholds,
+            "target": target,
         }
         super().__init__(config, theme)
 
@@ -91,20 +94,23 @@ class GaugeWidget(BaseWidget):
         font_scale = self.config.get("font_scale", 1.0)
 
         # Scaled font sizes
-        value_font_size = int(48 * font_scale)
-        label_font_size = int(20 * font_scale)
-        tick_font_size = int(12 * font_scale)
+        value_font_size = int(42 * font_scale)
+        label_font_size = int(16 * font_scale)
+        tick_font_size = int(11 * font_scale)
 
-        # Build gauge configuration
+        # Build a bullet gauge for a cleaner executive look.
         gauge_config = {
+            "shape": "bullet",
             "axis": {
                 "range": [min_val, max_val],
                 "tickcolor": colors["text_secondary"],
                 "tickfont": {"color": colors["text_secondary"], "size": tick_font_size},
+                "tickwidth": 0,
+                "tickvals": [min_val, max_val],
             },
             "bar": {"color": self._get_threshold_color()},
             "bgcolor": colors["surface"],
-            "borderwidth": 2,
+            "borderwidth": 1,
             "bordercolor": colors["grid"],
         }
 
@@ -113,30 +119,68 @@ class GaugeWidget(BaseWidget):
         if steps:
             gauge_config["steps"] = steps
 
-        # Add threshold line
-        gauge_config["threshold"] = {
-            "line": {"color": colors["negative"], "width": 4},
-            "thickness": 0.75,
-            "value": max_val * 0.9,  # Default threshold at 90%
-        }
+        # Add explicit target line only when provided.
+        target = self.config.get("target")
+        if target is not None:
+            gauge_config["threshold"] = {
+                "line": {"color": colors["negative"], "width": 3},
+                "thickness": 0.8,
+                "value": target,
+            }
 
+        clamped_value = max(min_val, min(max_val, value))
         fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=value,
-            number={
-                "suffix": unit,
-                "font": {"size": value_font_size, "color": colors["primary"]},
-            },
-            title={
-                "text": label or "",
-                "font": {"size": label_font_size, "color": colors["text_secondary"]},
-            },
+            mode="gauge",
+            value=clamped_value,
             gauge=gauge_config,
-            domain={"x": [0, 1], "y": [0, 1]},
+            domain={"x": [0.06, 0.94], "y": [0.30, 0.68]},
         ))
 
+        if label:
+            fig.add_annotation(
+                text=f"<b>{label.upper()}</b>",
+                x=0.06,
+                y=0.92,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                xanchor="left",
+                yanchor="top",
+                font={"size": label_font_size, "color": colors["text_secondary"]},
+            )
+
+        fig.add_annotation(
+            text=f"<b>{clamped_value:g}{unit}</b>",
+            x=0.94,
+            y=0.78,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            xanchor="right",
+            yanchor="top",
+            font={
+                "size": value_font_size,
+                "color": colors["text"],
+                "family": self.theme["fonts"]["title"],
+            },
+        )
+
+        fig.add_annotation(
+            text=f"{min_val:g} - {max_val:g}",
+            x=0.06,
+            y=0.20,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            font={"size": int(11 * font_scale), "color": colors["text_secondary"]},
+        )
+
         fig.update_layout(
-            margin=dict(l=40, r=40, t=80, b=40),
+            margin=dict(l=20, r=20, t=20, b=20),
+            paper_bgcolor=colors.get("surface", colors["background"]),
+            plot_bgcolor=colors.get("surface", colors["background"]),
         )
 
         return fig

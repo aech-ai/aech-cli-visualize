@@ -10,6 +10,17 @@ from .base import BaseWidget
 class TableWidget(BaseWidget):
     """Widget for rendering styled data tables."""
 
+    @staticmethod
+    def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+        """Convert #RRGGBB to rgba(r,g,b,a)."""
+        color = hex_color.lstrip("#")
+        if len(color) != 6:
+            return hex_color
+        r = int(color[0:2], 16)
+        g = int(color[2:4], 16)
+        b = int(color[4:6], 16)
+        return f"rgba({r}, {g}, {b}, {alpha})"
+
     def __init__(
         self,
         headers: list[str],
@@ -46,6 +57,7 @@ class TableWidget(BaseWidget):
         headers = self.config["headers"]
         rows = self.config["rows"]
         colors = self.theme["colors"]
+        font_scale = self.config.get("font_scale", 1.0)
 
         # Transpose rows to columns for Plotly
         columns = list(zip(*rows)) if rows else [[] for _ in headers]
@@ -53,6 +65,10 @@ class TableWidget(BaseWidget):
         # Generate cell colors
         cell_colors = self._get_cell_colors(len(rows), len(headers))
         header_colors = self._get_header_colors(len(headers))
+        header_font_size = int(13 * font_scale)
+        cell_font_size = int(12 * font_scale)
+        row_height = int(34 * font_scale)
+        header_height = int(38 * font_scale)
 
         fig = go.Figure(data=[
             go.Table(
@@ -61,38 +77,44 @@ class TableWidget(BaseWidget):
                     values=[f"<b>{h}</b>" for h in headers],
                     fill_color=header_colors,
                     align="left",
+                    line=dict(color=colors["grid"], width=1),
                     font=dict(
-                        color=colors["background"],
-                        size=14,
+                        color=colors["text"],
+                        size=header_font_size,
                         family=self.theme["fonts"]["title"],
                     ),
-                    height=40,
+                    height=header_height,
                 ),
                 cells=dict(
                     values=columns,
                     fill_color=cell_colors,
                     align="left",
+                    line=dict(color=colors["grid"], width=1),
                     font=dict(
                         color=colors["text"],
-                        size=13,
+                        size=cell_font_size,
                         family=self.theme["fonts"]["body"],
                     ),
-                    height=35,
+                    height=row_height,
                 ),
             )
         ])
 
         # Add title if present
         layout_updates = {
-            "margin": dict(l=20, r=20, t=60 if self.config["title"] else 20, b=20),
+            "margin": dict(l=12, r=12, t=54 if self.config["title"] else 16, b=12),
+            "paper_bgcolor": colors.get("surface", colors["background"]),
+            "plot_bgcolor": colors.get("surface", colors["background"]),
         }
 
         if self.config["title"]:
             layout_updates["title"] = dict(
                 text=self.config["title"],
-                x=0.5,
-                xanchor="center",
-                font=dict(size=20, color=colors["text"]),
+                x=0.02,
+                xanchor="left",
+                y=0.98,
+                yanchor="top",
+                font=dict(size=int(16 * font_scale), color=colors["text"]),
             )
 
         fig.update_layout(**layout_updates)
@@ -104,10 +126,10 @@ class TableWidget(BaseWidget):
         colors = self.theme["colors"]
         highlight_col = self.config.get("highlight_column")
 
-        header_colors = [colors["primary"]] * num_cols
+        header_colors = [colors["surface"]] * num_cols
 
         if highlight_col is not None and 0 <= highlight_col < num_cols:
-            header_colors[highlight_col] = colors["secondary"]
+            header_colors[highlight_col] = self._hex_to_rgba(colors["secondary"], 0.14)
 
         return header_colors
 
@@ -120,11 +142,11 @@ class TableWidget(BaseWidget):
         # Base colors for alternating rows
         if alternating:
             base_colors = [
-                colors["background"] if i % 2 == 0 else colors["surface"]
+                colors["surface"] if i % 2 == 0 else self._hex_to_rgba(colors["grid"], 0.18)
                 for i in range(num_rows)
             ]
         else:
-            base_colors = [colors["background"]] * num_rows
+            base_colors = [colors["surface"]] * num_rows
 
         # Create color matrix (one list per column)
         cell_colors = [base_colors.copy() for _ in range(num_cols)]
@@ -132,7 +154,7 @@ class TableWidget(BaseWidget):
         # Apply highlight to specific column
         if highlight_col is not None and 0 <= highlight_col < num_cols:
             # Slightly tint the highlight column
-            highlight_base = colors["surface"]
+            highlight_base = self._hex_to_rgba(colors["secondary"], 0.08)
             cell_colors[highlight_col] = [highlight_base] * num_rows
 
         return cell_colors

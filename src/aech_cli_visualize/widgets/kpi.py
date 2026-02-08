@@ -10,6 +10,17 @@ from .base import BaseWidget
 class KPIWidget(BaseWidget):
     """Widget for rendering KPI/metric cards."""
 
+    @staticmethod
+    def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+        """Convert #RRGGBB to rgba(r,g,b,a)."""
+        color = hex_color.lstrip("#")
+        if len(color) != 6:
+            return hex_color
+        r = int(color[0:2], 16)
+        g = int(color[2:4], 16)
+        b = int(color[4:6], 16)
+        return f"rgba({r}, {g}, {b}, {alpha})"
+
     def __init__(
         self,
         value: float | int | str,
@@ -101,56 +112,67 @@ class KPIWidget(BaseWidget):
         """Add a simple KPI indicator without sparkline."""
         # Get font scale from config (passed from dashboard style)
         font_scale = self.config.get("font_scale", 1.0)
+        colors = self.theme["colors"]
 
-        # Use number mode for formatted display
-        format_str = self.config.get("format_value") or ",.0f"
-        # Strip Python format braces if present
-        valueformat = format_str.replace("{:", "").replace("}", "")
+        # Scaled font sizes with a stronger hierarchy for dashboard cards
+        value_font_size = int(62 * font_scale)
+        label_font_size = int(17 * font_scale)
+        delta_font_size = int(16 * font_scale)
 
-        # Scaled font sizes
-        value_font_size = int(72 * font_scale)
-        label_font_size = int(24 * font_scale)
-        delta_font_size = int(28 * font_scale)
+        label_text = label.upper() if len(label) <= 28 else label
 
-        # Vertical centering: content_v_offset shifts content up (positive) or down (negative)
-        # Default 0 centers content; range typically -0.1 to 0.1
-        content_v_offset = self.config.get("content_v_offset", 0)
+        # Label
+        fig.add_annotation(
+            text=f"<b>{label_text}</b>",
+            x=0.02,
+            y=0.90,
+            xref="paper",
+            yref="paper",
+            xanchor="left",
+            yanchor="top",
+            showarrow=False,
+            font=dict(size=label_font_size, color=colors["text_secondary"]),
+        )
 
-        # Base domain positions - centered in widget space
-        domain_bottom = 0.08 + content_v_offset if delta else 0.05 + content_v_offset
-        domain_top = 0.82 + content_v_offset
-        delta_y = 0.12 + content_v_offset
+        # Primary value
+        fig.add_annotation(
+            text=f"<b>{display_value}</b>",
+            x=0.02,
+            y=0.58,
+            xref="paper",
+            yref="paper",
+            xanchor="left",
+            yanchor="middle",
+            showarrow=False,
+            font=dict(size=value_font_size, color=colors["text"], family=self.theme["fonts"]["title"]),
+        )
 
-        fig.add_trace(go.Indicator(
-            mode="number",
-            value=self.config["value"] if isinstance(self.config["value"], (int, float)) else 0,
-            number=dict(
-                font=dict(size=value_font_size, color=self.theme["colors"]["primary"]),
-                valueformat=valueformat,
-            ),
-            title=dict(
-                text=label,
-                font=dict(size=label_font_size, color=self.theme["colors"]["text_secondary"]),
-            ),
-            domain=dict(x=[0, 1], y=[domain_bottom, domain_top]),
-        ))
-
-        # Always use annotation for delta - indicator delta mode is buggy
+        # Delta chip
         if delta:
             # Determine arrow prefix based on delta direction
             arrow = "▲" if delta.startswith("+") or (delta[0].isdigit() and not delta.startswith("-")) else "▼"
             fig.add_annotation(
-                text=f"{arrow}{delta.lstrip('+-')}",
-                x=0.5,
-                y=delta_y,
+                text=f"<b>{arrow} {delta.lstrip('+-')}</b>",
+                x=0.02,
+                y=0.20,
                 xref="paper",
                 yref="paper",
                 showarrow=False,
+                xanchor="left",
+                yanchor="middle",
+                bgcolor=self._hex_to_rgba(self._get_delta_color(), 0.14),
+                bordercolor=self._hex_to_rgba(self._get_delta_color(), 0.35),
+                borderwidth=1,
+                borderpad=6,
                 font=dict(size=delta_font_size, color=self._get_delta_color()),
             )
 
+        fig.update_xaxes(visible=False, range=[0, 1], fixedrange=True)
+        fig.update_yaxes(visible=False, range=[0, 1], fixedrange=True)
         fig.update_layout(
-            margin=dict(l=40, r=40, t=40, b=40),
+            margin=dict(l=26, r=26, t=20, b=20),
+            paper_bgcolor=colors.get("surface", colors["background"]),
+            plot_bgcolor=colors.get("surface", colors["background"]),
         )
 
     def _add_kpi_with_sparkline(
@@ -167,38 +189,42 @@ class KPIWidget(BaseWidget):
 
         # Scaled font sizes
         value_font_size = int(64 * font_scale)
-        label_font_size = int(20 * font_scale)
-        delta_font_size = int(24 * font_scale)
+        label_font_size = int(16 * font_scale)
+        delta_font_size = int(14 * font_scale)
 
         # Add sparkline as background
         fig.add_trace(go.Scatter(
             y=sparkline,
             mode="lines",
             fill="tozeroy",
-            line=dict(color=colors["primary"], width=2),
-            fillcolor=f"rgba({int(colors['primary'][1:3], 16)}, {int(colors['primary'][3:5], 16)}, {int(colors['primary'][5:7], 16)}, 0.1)",
+            line=dict(color=colors["primary"], width=3),
+            fillcolor=self._hex_to_rgba(colors["primary"], 0.12),
             showlegend=False,
         ))
 
         # Add value as annotation
         fig.add_annotation(
-            text=display_value,
-            x=0.5,
-            y=0.7,
+            text=f"<b>{display_value}</b>",
+            x=0.02,
+            y=0.72,
             xref="paper",
             yref="paper",
             showarrow=False,
-            font=dict(size=value_font_size, color=colors["primary"], family=self.theme["fonts"]["title"]),
+            xanchor="left",
+            yanchor="middle",
+            font=dict(size=value_font_size, color=colors["text"], family=self.theme["fonts"]["title"]),
         )
 
         # Add label
         fig.add_annotation(
-            text=label,
-            x=0.5,
-            y=0.35,
+            text=f"<b>{label.upper()}</b>",
+            x=0.02,
+            y=0.92,
             xref="paper",
             yref="paper",
             showarrow=False,
+            xanchor="left",
+            yanchor="top",
             font=dict(size=label_font_size, color=colors["text_secondary"]),
         )
 
@@ -206,17 +232,25 @@ class KPIWidget(BaseWidget):
         if delta:
             arrow = "▲" if delta.startswith("+") or (delta[0].isdigit() and not delta.startswith("-")) else "▼"
             fig.add_annotation(
-                text=f"{arrow}{delta.lstrip('+-')}",
-                x=0.5,
-                y=0.2,
+                text=f"<b>{arrow} {delta.lstrip('+-')}</b>",
+                x=0.02,
+                y=0.20,
                 xref="paper",
                 yref="paper",
                 showarrow=False,
+                xanchor="left",
+                yanchor="middle",
+                bgcolor=self._hex_to_rgba(self._get_delta_color(), 0.14),
+                bordercolor=self._hex_to_rgba(self._get_delta_color(), 0.35),
+                borderwidth=1,
+                borderpad=6,
                 font=dict(size=delta_font_size, color=self._get_delta_color()),
             )
 
         fig.update_layout(
             xaxis=dict(visible=False),
             yaxis=dict(visible=False),
-            margin=dict(l=20, r=20, t=20, b=20),
+            margin=dict(l=24, r=24, t=20, b=20),
+            paper_bgcolor=colors.get("surface", colors["background"]),
+            plot_bgcolor=colors.get("surface", colors["background"]),
         )
