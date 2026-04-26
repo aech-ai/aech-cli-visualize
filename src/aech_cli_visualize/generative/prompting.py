@@ -30,6 +30,8 @@ def build_image_prompt(
     title: str | None,
     instructions: str | None,
     output_format: str,
+    surface: str,
+    include_header: bool,
     template_image: str | None = None,
     max_data_chars: int = MAX_PROMPT_DATA_CHARS,
 ) -> str:
@@ -59,11 +61,31 @@ def build_image_prompt(
         if template_image
         else "No template/reference image is provided; create a complete original visualization."
     )
+    if surface == "embedded-card":
+        surface_guidance = (
+            "Create a quiet in-app analytical card that can replace an existing chart panel. "
+            "Use a light product UI surface, restrained typography, subtle borders, and muted accents. "
+            "Do not include browser chrome, page navigation, app toolbar controls, or a large page header."
+        )
+    else:
+        surface_guidance = (
+            "Create a PowerPoint-ready 16:9 landscape analytical slide. "
+            "Use the whole canvas efficiently with calm executive-report styling and clear margins."
+        )
+
+    header_guidance = (
+        "A compact title/header is allowed if it materially improves comprehension."
+        if include_header
+        else "Do not create a large header band, hero title, mascot, logo block, or decorative top banner. Use at most a small inline title/caption."
+    )
 
     return "\n".join([
         "Use case: productivity-visual",
         "Asset type: executive analytical data visualization",
         f"Primary request: Create one polished {output_format.upper()} image where analysis and visualization are integrated.",
+        f"Surface: {surface}",
+        f"Surface guidance: {surface_guidance}",
+        f"Header guidance: {header_guidance}",
         f"Title: {title or analysis.headline}",
         f"Analysis headline: {analysis.headline}",
         f"Narrative: {analysis.narrative}",
@@ -92,6 +114,7 @@ def build_image_prompt(
         "- Prefer a single coherent dashboard/poster over separate disconnected charts.",
         "- Use exact labels and numeric values from the source data and typed analysis wherever visible.",
         "- Keep text concise and legible; prioritize the headline, key metrics, and most important insight callouts.",
+        "- Avoid loud poster styling: no oversized hero header, heavy dark banner, decorative mascot, or excessive red emphasis.",
         "- If there is too much data for every value to be legible, summarize visually and call out the important values explicitly.",
         "- Do not include watermarks, fake UI chrome, or placeholder lorem ipsum.",
     ])

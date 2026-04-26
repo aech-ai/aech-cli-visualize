@@ -119,7 +119,16 @@ aech-cli-visualize image examples/generative/agent-spend-anomaly.json \
   --output-dir ./out \
   --analysis-mode precomputed \
   --quality high \
+  --size 2048x1152 \
+  --generate
+
+# Quiet embedded chart-card replacement
+aech-cli-visualize image examples/generative/agent-spend-anomaly.json \
+  --output-dir ./out \
+  --analysis-mode precomputed \
+  --surface embedded-card \
   --size 1536x1024 \
+  --no-header \
   --generate
 
 # Let the CLI analyze raw data first, then generate the visualization
@@ -153,6 +162,8 @@ The `image` command writes the generated image plus two audit artifacts:
 ```
 
 The generative path does not fall back to Plotly, Delight, or rule-based analysis. If `OPENAI_API_KEY` is missing and LLM analysis or image generation is required, the command fails with a structured JSON error.
+
+By default, the `image` command targets a PowerPoint-friendly landscape slide (`--surface slide`, `--size 2048x1152`, `--no-header`). For replacing a chart inside an app page, use `--surface embedded-card` and optionally pass a screenshot or existing chart frame with `--template-image` so GPT Image can preserve the page's visual rhythm while replacing the chart content with an analysis-rich image.
 
 ## Input Schemas
 

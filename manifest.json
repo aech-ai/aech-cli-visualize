@@ -304,6 +304,12 @@
           "description": "Optional reference image for layout/style consistency."
         },
         {
+          "name": "surface",
+          "type": "option",
+          "required": false,
+          "description": "Target surface. Values: slide, embedded-card. Default: slide."
+        },
+        {
           "name": "analysis-mode",
           "type": "option",
           "required": false,
@@ -325,7 +331,13 @@
           "name": "size",
           "type": "option",
           "required": false,
-          "description": "Image size. Examples: 1536x1024, 2048x1152, auto. Default: 1536x1024."
+          "description": "Image size. Examples: 2048x1152 for 16:9 slide, 1536x1024, auto. Default: 2048x1152 for slide."
+        },
+        {
+          "name": "header",
+          "type": "option",
+          "required": false,
+          "description": "Allow a compact title/header. Default: false. Use --header or --no-header."
         },
         {
           "name": "quality",

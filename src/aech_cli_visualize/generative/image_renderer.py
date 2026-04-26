@@ -18,6 +18,7 @@ from .prompting import MAX_PROMPT_DATA_CHARS, build_image_prompt
 AnalysisMode = Literal["auto", "llm", "precomputed"]
 OutputFormat = Literal["png", "jpeg", "webp"]
 ImageQuality = Literal["low", "medium", "high", "auto"]
+SurfaceMode = Literal["slide", "embedded-card"]
 
 
 ANALYSIS_INSTRUCTIONS = """You are an expert analytical visualization agent.
@@ -39,10 +40,12 @@ class ImageGenerationOptions:
     image_model: str = "gpt-image-2"
     analysis_model: str = "gpt-5.5"
     analysis_mode: AnalysisMode = "auto"
-    size: str = "1536x1024"
+    size: str = "2048x1152"
     quality: ImageQuality = "medium"
     output_format: OutputFormat = "png"
     output_compression: int | None = None
+    surface: SurfaceMode = "slide"
+    include_header: bool = False
     max_data_chars: int = MAX_PROMPT_DATA_CHARS
     dry_run: bool = False
 
@@ -114,6 +117,8 @@ class GenerativeImageRenderer:
             title=payload.title,
             instructions=payload.instructions,
             output_format=options.output_format,
+            surface=options.surface,
+            include_header=options.include_header,
             template_image=str(template_image) if template_image else None,
             max_data_chars=options.max_data_chars,
         )

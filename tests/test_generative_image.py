@@ -65,12 +65,16 @@ def test_build_image_prompt_includes_data_analysis_and_constraints() -> None:
         title="Agent spend",
         instructions="Highlight anomalies.",
         output_format="png",
+        surface="embedded-card",
+        include_header=False,
     )
 
     assert "Spend anomaly detected" in prompt
     assert "Wednesday spike" in prompt
     assert '"spend_usd"' in prompt
     assert "Do not invent values outside this data" in prompt
+    assert "quiet in-app analytical card" in prompt
+    assert "Do not create a large header band" in prompt
 
 
 def test_image_command_dry_run_with_precomputed_analysis(tmp_path) -> None:
@@ -101,6 +105,9 @@ def test_image_command_dry_run_with_precomputed_analysis(tmp_path) -> None:
     assert output["success"] is True
     assert output["dry_run"] is True
     assert output["backend"] == "gpt-image"
+    assert output["surface"] == "slide"
+    assert output["size"] == "2048x1152"
+    assert output["include_header"] is False
     assert (tmp_path / "generative_visual.prompt.txt").exists()
     assert (tmp_path / "generative_visual.analysis.json").exists()
 

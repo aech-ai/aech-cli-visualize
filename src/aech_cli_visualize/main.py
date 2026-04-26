@@ -530,7 +530,18 @@ def image_command(
         str,
         typer.Option("--image-model", help="GPT Image model for raster generation"),
     ] = "gpt-image-2",
-    size: Annotated[str, typer.Option("--size", help="Image size, e.g. 1536x1024, 2048x1152, auto")] = "1536x1024",
+    surface: Annotated[
+        str,
+        typer.Option("--surface", help="Target surface: slide or embedded-card"),
+    ] = "slide",
+    size: Annotated[
+        Optional[str],
+        typer.Option("--size", help="Image size, e.g. 2048x1152 for 16:9 slide, 1536x1024, auto"),
+    ] = None,
+    include_header: Annotated[
+        bool,
+        typer.Option("--header/--no-header", help="Allow a compact title/header in the generated visual"),
+    ] = False,
     quality: Annotated[
         str,
         typer.Option("--quality", help="Image quality: low, medium, high, auto"),
@@ -569,6 +580,7 @@ def image_command(
         valid_analysis_modes = {"auto", "llm", "precomputed"}
         valid_formats = {"png", "jpeg", "webp"}
         valid_qualities = {"low", "medium", "high", "auto"}
+        valid_surfaces = {"slide", "embedded-card"}
 
         if analysis_mode not in valid_analysis_modes:
             raise ValueError(
@@ -580,6 +592,9 @@ def image_command(
 
         if quality not in valid_qualities:
             raise ValueError(f"Invalid quality: {quality}. Valid values: low, medium, high, auto")
+
+        if surface not in valid_surfaces:
+            raise ValueError(f"Invalid surface: {surface}. Valid values: slide, embedded-card")
 
         if output_compression is not None and not 0 <= output_compression <= 100:
             raise ValueError("output-compression must be between 0 and 100")
@@ -597,10 +612,12 @@ def image_command(
             image_model=image_model,
             analysis_model=analysis_model,
             analysis_mode=analysis_mode,  # type: ignore[arg-type]
-            size=size,
+            size=size or ("2048x1152" if surface == "slide" else "1536x1024"),
             quality=quality,  # type: ignore[arg-type]
             output_format=format,  # type: ignore[arg-type]
             output_compression=output_compression,
+            surface=surface,  # type: ignore[arg-type]
+            include_header=include_header,
             max_data_chars=max_data_chars,
             dry_run=dry_run,
         )
@@ -628,6 +645,9 @@ def image_command(
             "image_model": image_model,
             "analysis_model": analysis_model,
             "analysis_mode": analysis_mode,
+            "surface": surface,
+            "size": options.size,
+            "include_header": include_header,
             "dry_run": dry_run,
             "used_template_image": result.used_template_image,
             "usage": result.usage,
