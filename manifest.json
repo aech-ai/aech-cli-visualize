@@ -3,7 +3,7 @@
   "name": "visualize",
   "type": "cli",
   "command": "aech-cli-visualize",
-  "description": "Render charts, KPIs, tables, and dashboards to presentation-ready images. Input: JSON data or specification files. Output: PNG/SVG/PDF images sized for presentations (16:9 aspect ratio by default).",
+  "description": "Render charts, KPIs, tables, dashboards, and GPT Image analytical visuals to presentation-ready images. Input: JSON data or specification files. Output: PNG/SVG/PDF images sized for presentations (16:9 aspect ratio by default).",
   "actions": [
     {
       "name": "chart",
@@ -266,6 +266,84 @@
           "type": "option",
           "required": false,
           "description": "Output format. Values: png, svg, pdf. Default: png."
+        }
+      ]
+    },
+    {
+      "name": "image",
+      "description": "Generate an analysis-rich visualization image using GPT Image. Input: raw JSON data or wrapped payload with data, instructions, and optional typed analysis. Output: raster image plus prompt and analysis audit artifacts. Use when user wants analysis and visualization integrated in a polished image.",
+      "parameters": [
+        {
+          "name": "data_file",
+          "type": "argument",
+          "required": false,
+          "description": "Path to JSON payload/data file. If omitted, reads from stdin."
+        },
+        {
+          "name": "output-dir",
+          "type": "option",
+          "required": true,
+          "description": "Directory where output image and prompt artifacts will be written."
+        },
+        {
+          "name": "title",
+          "type": "option",
+          "required": false,
+          "description": "Visualization title override."
+        },
+        {
+          "name": "instructions",
+          "type": "option",
+          "required": false,
+          "description": "Analysis and visualization instructions for the model."
+        },
+        {
+          "name": "template-image",
+          "type": "option",
+          "required": false,
+          "description": "Optional reference image for layout/style consistency."
+        },
+        {
+          "name": "analysis-mode",
+          "type": "option",
+          "required": false,
+          "description": "Analysis mode. Values: auto, llm, precomputed. Default: auto."
+        },
+        {
+          "name": "analysis-model",
+          "type": "option",
+          "required": false,
+          "description": "OpenAI model for typed data analysis. Default: gpt-5.5."
+        },
+        {
+          "name": "image-model",
+          "type": "option",
+          "required": false,
+          "description": "GPT Image model for raster generation. Default: gpt-image-2."
+        },
+        {
+          "name": "size",
+          "type": "option",
+          "required": false,
+          "description": "Image size. Examples: 1536x1024, 2048x1152, auto. Default: 1536x1024."
+        },
+        {
+          "name": "quality",
+          "type": "option",
+          "required": false,
+          "description": "Image quality. Values: low, medium, high, auto. Default: medium."
+        },
+        {
+          "name": "format",
+          "type": "option",
+          "required": false,
+          "description": "Output format. Values: png, jpeg, webp. Default: png."
+        },
+        {
+          "name": "dry-run",
+          "type": "option",
+          "required": false,
+          "description": "Write prompt/analysis artifacts without calling GPT Image. Use --dry-run or --generate."
         }
       ]
     }

@@ -504,6 +504,148 @@ def analyze_command(
         raise typer.Exit(1)
 
 
+@app.command("image")
+def image_command(
+    data_file: Annotated[Optional[str], typer.Argument(help="Path to JSON payload/data file (reads stdin if omitted)")] = None,
+    output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output image and prompt artifacts")] = ".",
+    title: Annotated[Optional[str], typer.Option("--title", help="Visualization title override")] = None,
+    instructions: Annotated[
+        Optional[str],
+        typer.Option("--instructions", help="Analysis and visualization instructions for the model"),
+    ] = None,
+    template_image: Annotated[
+        Optional[str],
+        typer.Option("--template-image", help="Optional reference image for visual consistency"),
+    ] = None,
+    filename: Annotated[str, typer.Option("--filename", help="Output filename without extension")] = "generative_visual",
+    analysis_mode: Annotated[
+        str,
+        typer.Option("--analysis-mode", help="Analysis mode: auto, llm, precomputed"),
+    ] = "auto",
+    analysis_model: Annotated[
+        str,
+        typer.Option("--analysis-model", help="OpenAI model for typed data analysis"),
+    ] = "gpt-5.5",
+    image_model: Annotated[
+        str,
+        typer.Option("--image-model", help="GPT Image model for raster generation"),
+    ] = "gpt-image-2",
+    size: Annotated[str, typer.Option("--size", help="Image size, e.g. 1536x1024, 2048x1152, auto")] = "1536x1024",
+    quality: Annotated[
+        str,
+        typer.Option("--quality", help="Image quality: low, medium, high, auto"),
+    ] = "medium",
+    format: Annotated[
+        str,
+        typer.Option("--format", help="Output format: png, jpeg, webp"),
+    ] = "png",
+    output_compression: Annotated[
+        Optional[int],
+        typer.Option("--output-compression", help="JPEG/WebP compression level 0-100"),
+    ] = None,
+    max_data_chars: Annotated[
+        int,
+        typer.Option("--max-data-chars", help="Maximum serialized data chars allowed in model prompts"),
+    ] = 18_000,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run/--generate", help="Write prompt/analysis artifacts without calling GPT Image"),
+    ] = False,
+) -> None:
+    """Generate an analysis-rich data visualization image with GPT Image.
+
+    Input can be either raw JSON data or a payload:
+    {"data": {...}, "title": "...", "instructions": "...", "analysis": {...}}.
+    If analysis is omitted, an OpenAI typed-output analysis call is made before
+    image generation. No deterministic chart fallback is used.
+    """
+    try:
+        from .generative import (
+            GenerativeImageRenderer,
+            ImageGenerationOptions,
+            resolve_visualization_input,
+        )
+
+        valid_analysis_modes = {"auto", "llm", "precomputed"}
+        valid_formats = {"png", "jpeg", "webp"}
+        valid_qualities = {"low", "medium", "high", "auto"}
+
+        if analysis_mode not in valid_analysis_modes:
+            raise ValueError(
+                f"Invalid analysis mode: {analysis_mode}. Valid values: auto, llm, precomputed"
+            )
+
+        if format not in valid_formats:
+            raise ValueError(f"Invalid format: {format}. Valid values: png, jpeg, webp")
+
+        if quality not in valid_qualities:
+            raise ValueError(f"Invalid quality: {quality}. Valid values: low, medium, high, auto")
+
+        if output_compression is not None and not 0 <= output_compression <= 100:
+            raise ValueError("output-compression must be between 0 and 100")
+
+        if output_compression is not None and format == "png":
+            raise ValueError("output-compression is only supported for jpeg and webp outputs")
+
+        raw_payload = parse_data_input(data_file)
+        payload = resolve_visualization_input(
+            raw_payload,
+            title=title,
+            instructions=instructions,
+        )
+        options = ImageGenerationOptions(
+            image_model=image_model,
+            analysis_model=analysis_model,
+            analysis_mode=analysis_mode,  # type: ignore[arg-type]
+            size=size,
+            quality=quality,  # type: ignore[arg-type]
+            output_format=format,  # type: ignore[arg-type]
+            output_compression=output_compression,
+            max_data_chars=max_data_chars,
+            dry_run=dry_run,
+        )
+
+        renderer = GenerativeImageRenderer()
+        result = renderer.render(
+            payload=payload,
+            output_dir=output_dir,
+            filename=filename,
+            options=options,
+            template_image=template_image,
+        )
+
+        output_files = [
+            get_file_info(result.prompt_path),
+            get_file_info(result.analysis_path),
+        ]
+        if result.output_path is not None:
+            output_files.insert(0, get_file_info(result.output_path))
+
+        output_json({
+            "success": True,
+            "output_files": output_files,
+            "backend": "gpt-image",
+            "image_model": image_model,
+            "analysis_model": analysis_model,
+            "analysis_mode": analysis_mode,
+            "dry_run": dry_run,
+            "used_template_image": result.used_template_image,
+            "usage": result.usage,
+            "message": (
+                "Generative visualization prompt prepared"
+                if dry_run
+                else "Generative visualization image rendered successfully"
+            ),
+        })
+
+    except Exception as e:
+        output_json({
+            "success": False,
+            "error": str(e),
+        })
+        raise typer.Exit(1)
+
+
 # Config subcommand group
 config_app = typer.Typer(help="Manage saved dashboard configurations.")
 app.add_typer(config_app, name="config")

@@ -9,10 +9,11 @@ resolution-markers = [
 
 [[package]]
 name = "aech-cli-visualize"
-version = "0.1.1"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "kaleido" },
+    { name = "openai" },
     { name = "pandas" },
     { name = "pillow" },
     { name = "plotly" },
@@ -33,6 +34,7 @@ vlm = [
 [package.metadata]
 requires-dist = [
     { name = "kaleido", specifier = ">=0.2.1" },
+    { name = "openai", specifier = ">=2.15.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "pillow", specifier = ">=10.4.0" },
     { name = "plotly", specifier = ">=5.18.0" },
