@@ -520,7 +520,7 @@ def image_command(
     filename: Annotated[str, typer.Option("--filename", help="Output filename without extension")] = "generative_visual",
     analysis_mode: Annotated[
         str,
-        typer.Option("--analysis-mode", help="Analysis mode: auto, llm, precomputed"),
+        typer.Option("--analysis-mode", help="Analysis mode: auto, llm, precomputed, code"),
     ] = "auto",
     analysis_model: Annotated[
         str,
@@ -577,14 +577,14 @@ def image_command(
             resolve_visualization_input,
         )
 
-        valid_analysis_modes = {"auto", "llm", "precomputed"}
+        valid_analysis_modes = {"auto", "llm", "precomputed", "code"}
         valid_formats = {"png", "jpeg", "webp"}
         valid_qualities = {"low", "medium", "high", "auto"}
         valid_surfaces = {"slide", "embedded-card"}
 
         if analysis_mode not in valid_analysis_modes:
             raise ValueError(
-                f"Invalid analysis mode: {analysis_mode}. Valid values: auto, llm, precomputed"
+                f"Invalid analysis mode: {analysis_mode}. Valid values: auto, llm, precomputed, code"
             )
 
         if format not in valid_formats:

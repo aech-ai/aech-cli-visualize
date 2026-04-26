@@ -138,6 +138,16 @@ cat data.json | aech-cli-visualize image \
   --instructions "Explain trend quality and highlight inflection points" \
   --analysis-mode llm
 
+# Agentic analysis for larger datasets: generate Python analysis code, run it
+# against the full payload, then brief GPT Image from compact derived results
+cat sessions.json | aech-cli-visualize image \
+  --output-dir ./out \
+  --title "Session Spend Analysis" \
+  --instructions "Explain why spend jumped and cite the driving sessions" \
+  --analysis-mode code \
+  --surface embedded-card \
+  --generate
+
 # Use a prior image as a visual-consistency reference
 aech-cli-visualize image examples/generative/revenue-pipeline-dashboard.json \
   --output-dir ./out \
@@ -145,7 +155,7 @@ aech-cli-visualize image examples/generative/revenue-pipeline-dashboard.json \
   --template-image ./templates/board-style.png
 ```
 
-The `image` command writes the generated image plus two audit artifacts:
+The `image` command writes the generated image plus prompt and analysis audit artifacts:
 
 ```json
 {
@@ -164,6 +174,8 @@ The `image` command writes the generated image plus two audit artifacts:
 The generative path does not fall back to Plotly, Delight, or rule-based analysis. If `OPENAI_API_KEY` is missing and LLM analysis or image generation is required, the command fails with a structured JSON error.
 
 By default, the `image` command targets a PowerPoint-friendly landscape slide (`--surface slide`, `--size 2048x1152`, `--no-header`). For replacing a chart inside an app page, use `--surface embedded-card` and optionally pass a screenshot or existing chart frame with `--template-image` so GPT Image can preserve the page's visual rhythm while replacing the chart content with an analysis-rich image.
+
+`--analysis-mode code` is intended for data that is too large or detailed to put directly in the image prompt. The CLI profiles and samples the payload, asks the analysis model to write a constrained `analyze(data)` Python function, validates the code, runs it on a sample, runs it on the full payload, and sends only compact chart-ready results to the image prompt. It writes extra audit files beside the image: `*.analysis_code.py`, `*.analysis_sample.json`, and `*.analysis_full.json`. If generated code fails validation or execution, the command fails; no fallback image is produced.
 
 ## Input Schemas
 

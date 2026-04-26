@@ -11,11 +11,12 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from .code_analysis import analyze_with_generated_code
 from .models import VisualizationAnalysis, VisualizationPayload
 from .prompting import MAX_PROMPT_DATA_CHARS, build_image_prompt
 
 
-AnalysisMode = Literal["auto", "llm", "precomputed"]
+AnalysisMode = Literal["auto", "llm", "precomputed", "code"]
 OutputFormat = Literal["png", "jpeg", "webp"]
 ImageQuality = Literal["low", "medium", "high", "auto"]
 SurfaceMode = Literal["slide", "embedded-card"]
@@ -110,9 +111,14 @@ class GenerativeImageRenderer:
         output_directory = Path(output_dir)
         output_directory.mkdir(parents=True, exist_ok=True)
 
-        analysis = self._resolve_analysis(payload=payload, options=options)
+        analysis, prompt_data = self._resolve_analysis(
+            payload=payload,
+            options=options,
+            output_dir=output_directory,
+            filename=filename,
+        )
         prompt = build_image_prompt(
-            data=payload.data,
+            data=prompt_data,
             analysis=analysis,
             title=payload.title,
             instructions=payload.instructions,
@@ -163,19 +169,33 @@ class GenerativeImageRenderer:
         *,
         payload: VisualizationPayload,
         options: ImageGenerationOptions,
-    ) -> VisualizationAnalysis:
-        """Return precomputed analysis or call the analysis model."""
+        output_dir: Path,
+        filename: str,
+    ) -> tuple[VisualizationAnalysis, dict[str, Any]]:
+        """Return analysis and compact data for the image prompt."""
         if options.analysis_mode == "precomputed":
             if payload.analysis is None:
                 raise ValueError(
                     "analysis_mode=precomputed requires an 'analysis' object in the input JSON."
                 )
-            return payload.analysis
+            return payload.analysis, payload.data
 
         if options.analysis_mode == "auto" and payload.analysis is not None:
-            return payload.analysis
+            return payload.analysis, payload.data
 
-        return self._analyze_with_llm(payload=payload, options=options)
+        if options.analysis_mode == "code":
+            result = analyze_with_generated_code(
+                data=payload.data,
+                title=payload.title,
+                instructions=payload.instructions,
+                model=options.analysis_model,
+                api_key=self.api_key,
+                output_dir=output_dir,
+                filename=filename,
+            )
+            return result.analysis, result.prompt_data
+
+        return self._analyze_with_llm(payload=payload, options=options), payload.data
 
     def _analyze_with_llm(
         self,

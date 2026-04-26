@@ -319,7 +319,7 @@
           "name": "analysis-mode",
           "type": "option",
           "required": false,
-          "description": "Analysis mode. Values: auto, llm, precomputed. Default: auto."
+          "description": "Analysis mode. Values: auto, llm, precomputed, code. Default: auto."
         },
         {
           "name": "analysis-model",
