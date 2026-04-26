@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import base64
 import json
+import mimetypes
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import ValidationError
+from pydantic_ai import Agent
 
+from ..model_utils import build_pydantic_ai_model, get_model_settings
+from ..observability import append_llm_log_entry, observed_llm_role, timed_llm_call
 from .code_analysis import analyze_with_generated_code
 from .models import VisualizationAnalysis, VisualizationPayload
 from .prompting import MAX_PROMPT_DATA_CHARS, build_image_prompt
@@ -218,28 +222,23 @@ class GenerativeImageRenderer:
                 "Pre-aggregate the dataset before calling the generative image backend."
             )
 
-        try:
-            from openai import OpenAI
-        except ImportError as exc:  # pragma: no cover - dependency guard
-            raise RuntimeError(
-                "The generative image backend requires the 'openai' package."
-            ) from exc
-
-        client = OpenAI(api_key=self.api_key)
-        response = client.responses.parse(
-            model=options.analysis_model,
+        agent: Agent[None, VisualizationAnalysis] = Agent(
+            build_pydantic_ai_model(options.analysis_model, api_key=self.api_key),
+            output_type=VisualizationAnalysis,
             instructions=ANALYSIS_INSTRUCTIONS,
-            input="\n".join([
+            model_settings=get_model_settings(options.analysis_model),
+        )
+        prompt = "\n".join(
+            [
                 f"Title: {payload.title or 'Untitled visualization'}",
                 f"User instructions: {payload.instructions or 'Analyze and visualize the data.'}",
                 "Dataset JSON:",
                 data_text,
-            ]),
-            text_format=VisualizationAnalysis,
+            ]
         )
-        if response.output_parsed is None:
-            raise RuntimeError("Analysis model returned no parsed VisualizationAnalysis output.")
-        return response.output_parsed
+        with observed_llm_role("executor"):
+            result = agent.run_sync(prompt)
+        return result.output
 
     def _generate_image(
         self,
@@ -248,7 +247,7 @@ class GenerativeImageRenderer:
         options: ImageGenerationOptions,
         template_image: str | Path | None,
     ) -> tuple[bytes, dict[str, Any] | None]:
-        """Call GPT Image and return decoded image bytes."""
+        """Call GPT Image through the Responses image-generation tool."""
         if not self.api_key:
             raise RuntimeError("OPENAI_API_KEY is required for GPT Image generation.")
 
@@ -259,32 +258,127 @@ class GenerativeImageRenderer:
                 "The generative image backend requires the 'openai' package."
             ) from exc
 
-        client = OpenAI(api_key=self.api_key)
-        common_kwargs: dict[str, Any] = {
-            "model": options.image_model,
-            "prompt": prompt,
-            "size": options.size,
-            "quality": options.quality,
-            "output_format": options.output_format,
-        }
-        if options.output_compression is not None:
-            common_kwargs["output_compression"] = options.output_compression
-
+        content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
         if template_image is not None:
             template_path = Path(template_image)
             if not template_path.exists():
                 raise FileNotFoundError(f"Template image not found: {template_path}")
-            with template_path.open("rb") as image_file:
-                response = client.images.edit(image=image_file, **common_kwargs)
-        else:
-            response = client.images.generate(**common_kwargs)
+            media_type = mimetypes.guess_type(template_path.name)[0] or "image/png"
+            encoded = base64.b64encode(template_path.read_bytes()).decode("ascii")
+            content.append({
+                "type": "input_image",
+                "image_url": f"data:{media_type};base64,{encoded}",
+            })
 
-        if not response.data or not response.data[0].b64_json:
+        tool: dict[str, Any] = {
+            "type": "image_generation",
+            "size": options.size,
+            "quality": options.quality,
+            "output_format": options.output_format,
+            "action": "edit" if template_image is not None else "generate",
+        }
+        if options.output_compression is not None:
+            tool["output_compression"] = options.output_compression
+
+        client = OpenAI(api_key=self.api_key)
+        with observed_llm_role("executor"), timed_llm_call() as elapsed_ms:
+            try:
+                response = client.responses.create(
+                    model=options.image_model,
+                    input=[{"role": "user", "content": content}],
+                    tools=[tool],
+                    tool_choice={"type": "image_generation"},
+                )
+            except Exception as exc:
+                append_llm_log_entry({
+                    "model": options.image_model,
+                    "operation": "chat",
+                    "tool_name": "image_generation",
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 0,
+                    "cache_creation_tokens": 0,
+                    "duration_ms": elapsed_ms(),
+                    "status": "ERROR",
+                    "error": str(exc),
+                })
+                raise
+
+        image_base64 = _extract_response_image_result(response)
+        if not image_base64:
             raise RuntimeError("GPT Image response did not include base64 image data.")
 
-        usage = None
-        if getattr(response, "usage", None) is not None:
-            usage_obj = response.usage
-            usage = usage_obj.model_dump() if hasattr(usage_obj, "model_dump") else dict(usage_obj)
+        usage = _normalize_openai_usage(getattr(response, "usage", None))
+        cost_usd = _estimate_gpt_image_2_cost_usd(options.image_model, usage)
+        append_llm_log_entry({
+            "model": options.image_model,
+            "operation": "chat",
+            "tool_name": "image_generation",
+            "input_tokens": usage["input_tokens"],
+            "output_tokens": usage["output_tokens"],
+            "reasoning_tokens": usage.get("reasoning_tokens", 0),
+            "cache_read_tokens": usage.get("cache_read_tokens", 0),
+            "cache_creation_tokens": usage.get("cache_creation_tokens", 0),
+            "duration_ms": elapsed_ms(),
+            "status": "OK",
+            "cost_usd": cost_usd if cost_usd is not None else 0.0,
+            "request_messages": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
+            "response_messages": [{
+                "type": "image_generation_call",
+                "response_id": getattr(response, "id", None),
+            }],
+        })
 
-        return base64.b64decode(response.data[0].b64_json), usage
+        return base64.b64decode(image_base64), usage
+
+
+def _extract_response_image_result(response: Any) -> str | None:
+    """Extract base64 image data from an OpenAI Responses image-generation call."""
+    for output in getattr(response, "output", []) or []:
+        if getattr(output, "type", None) == "image_generation_call":
+            result = getattr(output, "result", None)
+            return str(result) if result else None
+    return None
+
+
+def _normalize_openai_usage(usage: Any) -> dict[str, int]:
+    if usage is None:
+        return {
+            "requests": 1,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "reasoning_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+        }
+    payload = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
+    input_tokens = int(payload.get("input_tokens") or payload.get("prompt_tokens") or 0)
+    output_tokens = int(payload.get("output_tokens") or payload.get("completion_tokens") or 0)
+    details = payload.get("input_tokens_details") or {}
+    output_details = payload.get("output_tokens_details") or {}
+    cache_read_tokens = int(details.get("cached_tokens") or details.get("cache_read_tokens") or 0)
+    reasoning_tokens = int(output_details.get("reasoning_tokens") or payload.get("reasoning_tokens") or 0)
+    total_tokens = int(payload.get("total_tokens") or input_tokens + output_tokens)
+    return {
+        "requests": 1,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "reasoning_tokens": reasoning_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_creation_tokens": 0,
+    }
+
+
+def _estimate_gpt_image_2_cost_usd(model: str, usage: dict[str, int]) -> float | None:
+    """Estimate GPT Image 2 cost from token usage using current standard pricing."""
+    if model.split(":", 1)[-1] != "gpt-image-2":
+        return None
+
+    input_tokens = max(0, usage.get("input_tokens", 0) - usage.get("cache_read_tokens", 0))
+    cached_tokens = usage.get("cache_read_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    cost = (input_tokens * 5.00 + cached_tokens * 1.25 + output_tokens * 30.00) / 1_000_000
+    return round(cost, 8)

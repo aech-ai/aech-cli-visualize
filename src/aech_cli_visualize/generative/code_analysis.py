@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent
 
+from ..model_utils import build_pydantic_ai_model, get_model_settings
+from ..observability import observed_llm_role
 from .models import VisualizationAnalysis
 
 
@@ -197,30 +200,27 @@ def _generate_analysis_code(
     model: str,
     api_key: str,
 ) -> str:
-    try:
-        from openai import OpenAI
-    except ImportError as exc:  # pragma: no cover - dependency guard
-        raise RuntimeError("Code analysis mode requires the 'openai' package.") from exc
-
     profile = _profile_value(data)
     sample = _sample_value(data)
-    client = OpenAI(api_key=api_key)
-    response = client.responses.parse(
-        model=model,
+    agent: Agent[None, GeneratedAnalysisProgram] = Agent(
+        build_pydantic_ai_model(model, api_key=api_key),
+        output_type=GeneratedAnalysisProgram,
         instructions=CODE_ANALYSIS_INSTRUCTIONS,
-        input="\n".join([
+        model_settings=get_model_settings(model),
+    )
+    prompt = "\n".join(
+        [
             f"Title: {title or 'Untitled visualization'}",
             f"User question/instructions: {instructions or 'Analyze the dataset for a clear visual.'}",
             "Dataset profile JSON:",
             json.dumps(profile, indent=2, sort_keys=True, default=str),
             "Cheap sample JSON:",
             json.dumps(sample, indent=2, sort_keys=True, default=str),
-        ]),
-        text_format=GeneratedAnalysisProgram,
+        ]
     )
-    if response.output_parsed is None:
-        raise RuntimeError("Analysis code model returned no parsed program.")
-    return response.output_parsed.code
+    with observed_llm_role("executor"):
+        response = agent.run_sync(prompt)
+    return response.output.code
 
 
 def _validate_analysis_code(code: str) -> None:
@@ -286,27 +286,45 @@ def _run_analysis_code(
 
         safe_builtins = {
             "__import__": safe_import,
+            "ArithmeticError": ArithmeticError,
+            "Exception": Exception,
+            "KeyError": KeyError,
+            "LookupError": LookupError,
+            "TypeError": TypeError,
+            "ValueError": ValueError,
+            "ZeroDivisionError": ZeroDivisionError,
             "abs": abs,
             "all": all,
             "any": any,
             "bool": bool,
+            "callable": callable,
             "dict": dict,
             "enumerate": enumerate,
+            "filter": filter,
             "float": float,
             "format": format,
+            "hasattr": hasattr,
             "int": int,
+            "iter": iter,
             "isinstance": isinstance,
+            "issubclass": issubclass,
             "len": len,
             "list": list,
+            "map": map,
             "max": max,
             "min": min,
+            "next": next,
+            "pow": pow,
             "range": range,
+            "repr": repr,
             "round": round,
             "set": set,
+            "slice": slice,
             "sorted": sorted,
             "str": str,
             "sum": sum,
             "tuple": tuple,
+            "type": type,
             "zip": zip,
         }
         namespace = {
@@ -384,36 +402,33 @@ def _brief_from_code_result(
     model: str,
     api_key: str,
 ) -> VisualizationAnalysis:
-    try:
-        from openai import OpenAI
-    except ImportError as exc:  # pragma: no cover - dependency guard
-        raise RuntimeError("Code analysis mode requires the 'openai' package.") from exc
-
     analysis_data = raw_result.get("analysis_data", raw_result.get("analysis"))
     prompt_data = raw_result.get("prompt_data")
     compact_result = {
         "analysis_data": analysis_data,
         "prompt_data": prompt_data,
     }
-    client = OpenAI(api_key=api_key)
-    response = client.responses.parse(
-        model=model,
+    agent: Agent[None, VisualizationAnalysis] = Agent(
+        build_pydantic_ai_model(model, api_key=api_key),
+        output_type=VisualizationAnalysis,
         instructions=(
             "You convert compact Python data-analysis output into a typed visualization brief. "
             "Use only the supplied compact analysis result. Do not invent values. "
             "The brief is for one generated analytical image."
         ),
-        input="\n".join([
+        model_settings=get_model_settings(model),
+    )
+    prompt = "\n".join(
+        [
             f"Title: {title or 'Untitled visualization'}",
             f"User question/instructions: {instructions or 'Analyze the dataset for a clear visual.'}",
             "Compact Python analysis result JSON:",
             json.dumps(compact_result, indent=2, sort_keys=True, default=str),
-        ]),
-        text_format=VisualizationAnalysis,
+        ]
     )
-    if response.output_parsed is None:
-        raise RuntimeError("Visualization brief model returned no parsed VisualizationAnalysis output.")
-    return response.output_parsed
+    with observed_llm_role("executor"):
+        response = agent.run_sync(prompt)
+    return response.output
 
 
 def _sample_value(value: Any, *, max_rows: int = 80, max_keys: int = 24) -> Any:

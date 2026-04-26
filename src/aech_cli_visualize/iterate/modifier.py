@@ -10,6 +10,7 @@ from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.settings import ModelSettings
 
 from ..model_utils import parse_model_string, get_model_settings
+from ..observability import observed_llm_role
 
 
 class StyleModification(BaseModel):
@@ -222,7 +223,8 @@ Be BOLD with changes - small tweaks won't fix significant visual problems."""
         if image_path and image_path.exists():
             messages.append(BinaryContent.from_path(image_path))
 
-        result = self.agent.run_sync(messages)
+        with observed_llm_role("executor"):
+            result = self.agent.run_sync(messages)
 
         return result.output
 

@@ -7,6 +7,7 @@ from typing import Any
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
+from ..observability import observed_llm_role
 from ..model_utils import parse_model_string, get_model_settings
 from .fingerprint import analyze_field, compute_schema_fingerprint
 from .models import (
@@ -496,23 +497,12 @@ class DataAnalyzer:
         # Build prompt with pre-analyzed data
         prompt = self._build_llm_prompt(fields, patterns, data)
 
-        try:
+        with observed_llm_role("executor"):
             result = self.agent.run_sync(prompt)
-            # Merge LLM results with our computed fingerprint and matching configs
-            output = result.output
-            output.schema_fingerprint = fingerprint
-            output.matching_configs = matching_names
-            return output
-        except Exception:
-            # Fallback to rule-based if LLM fails
-            return AnalysisResult(
-                fields=fields,
-                patterns=patterns,
-                suggested_widgets=suggestions,
-                questions=self._generate_questions(fields, patterns),
-                schema_fingerprint=fingerprint,
-                matching_configs=matching_names,
-            )
+        output = result.output
+        output.schema_fingerprint = fingerprint
+        output.matching_configs = matching_names
+        return output
 
     def _build_llm_prompt(
         self,

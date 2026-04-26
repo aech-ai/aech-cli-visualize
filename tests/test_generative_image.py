@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from typer.testing import CliRunner
 
+from aech_cli_visualize.generative.image_renderer import (
+    _estimate_gpt_image_2_cost_usd,
+    _extract_response_image_result,
+)
 from aech_cli_visualize.generative import (
     VisualizationAnalysis,
     build_image_prompt,
     resolve_visualization_input,
 )
 from aech_cli_visualize.main import app
+from aech_cli_visualize.observability import resolve_session_path
 
 
 def _analysis_dict() -> dict:
@@ -141,3 +147,37 @@ def test_image_command_rejects_png_compression(tmp_path) -> None:
     output = json.loads(result.output)
     assert output["success"] is False
     assert "jpeg and webp" in output["error"]
+
+
+def test_extract_response_image_result() -> None:
+    output = type("Output", (), {"type": "image_generation_call", "result": "aW1hZ2U="})()
+    response = type("Response", (), {"output": [output]})()
+
+    assert _extract_response_image_result(response) == "aW1hZ2U="
+
+
+def test_estimate_gpt_image_2_cost_usd() -> None:
+    cost = _estimate_gpt_image_2_cost_usd(
+        "gpt-image-2",
+        {"input_tokens": 1000, "cache_read_tokens": 100, "output_tokens": 2000},
+    )
+
+    assert cost == 0.064625
+
+
+def test_resolve_session_path_uses_standard_aech_session(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("AECH_SESSION_PATH", raising=False)
+    monkeypatch.delenv("LLM_LOG_PATH", raising=False)
+    monkeypatch.setenv("AECH_SESSION_ID", "session-123")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    assert resolve_session_path() == tmp_path / ".aech" / "sessions" / "session-123"
+
+
+def test_resolve_session_path_prefers_llm_log_path(monkeypatch, tmp_path) -> None:
+    session_path = tmp_path / ".aech" / "sessions" / "session-456"
+    monkeypatch.delenv("AECH_SESSION_PATH", raising=False)
+    monkeypatch.setenv("LLM_LOG_PATH", str(session_path / "llm.jsonl"))
+    monkeypatch.setenv("AECH_SESSION_ID", "ignored")
+
+    assert resolve_session_path() == session_path

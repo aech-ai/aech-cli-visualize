@@ -8,6 +8,7 @@ from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.settings import ModelSettings
 
 from ..model_utils import parse_model_string, get_model_settings
+from ..observability import observed_llm_role
 from .models import ValidationDeps, ValidationResult
 
 
@@ -146,9 +147,10 @@ Provide your assessment as a structured validation result."""
         )
 
         # Run the agent with image and prompt
-        result = self.agent.run_sync(
-            [self._build_prompt(spec), image],
-            deps=deps,
-        )
+        with observed_llm_role("executor"):
+            result = self.agent.run_sync(
+                [self._build_prompt(spec), image],
+                deps=deps,
+            )
 
         return result.output

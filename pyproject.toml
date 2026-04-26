@@ -17,6 +17,7 @@ dependencies = [
     "vl-convert-python>=1.8.0",
     "pandas>=2.0.0",
     "pydantic>=2.0.0",
+    "pydantic-ai-slim[anthropic,openai]>=1.44.0",
 ]
 
 [project.scripts]
@@ -24,7 +25,7 @@ aech-cli-visualize = "aech_cli_visualize.main:run"
 
 [project.optional-dependencies]
 vlm = [
-    "pydantic-ai>=0.1.0",
+    "pydantic-ai-slim[anthropic,openai]>=1.44.0",
 ]
 dev = [
     "pytest>=7.0.0",

@@ -371,6 +371,7 @@ def dashboard_command(
         if vlm_validate:
             # Use validated composer with VLM feedback loop
             from .dashboard.validated_composer import ValidatedDashboardComposer
+            from .observability import llm_observability_session
 
             composer = ValidatedDashboardComposer(
                 spec=spec,
@@ -380,12 +381,13 @@ def dashboard_command(
                 vlm_model=vlm_model,
             )
 
-            result = composer.render(
-                output_dir=output_dir,
-                filename="dashboard",
-                format=format,  # type: ignore
-                resolution=resolution,
-            )
+            with llm_observability_session():
+                result = composer.render(
+                    output_dir=output_dir,
+                    filename="dashboard",
+                    format=format,  # type: ignore
+                    resolution=resolution,
+                )
 
             # Build validation metadata for output
             validation_info = {
@@ -478,10 +480,12 @@ def analyze_command(
     """
     try:
         from .config import DataAnalyzer
+        from .observability import llm_observability_session
 
         data = parse_data_input(data_file)
-        analyzer = DataAnalyzer(use_llm=use_llm)
-        result = analyzer.analyze(data, include_questions=questions)
+        with llm_observability_session():
+            analyzer = DataAnalyzer(use_llm=use_llm)
+            result = analyzer.analyze(data, include_questions=questions)
 
         output_json({
             "success": True,
@@ -576,6 +580,7 @@ def image_command(
             ImageGenerationOptions,
             resolve_visualization_input,
         )
+        from .observability import llm_observability_session
 
         valid_analysis_modes = {"auto", "llm", "precomputed", "code"}
         valid_formats = {"png", "jpeg", "webp"}
@@ -622,14 +627,15 @@ def image_command(
             dry_run=dry_run,
         )
 
-        renderer = GenerativeImageRenderer()
-        result = renderer.render(
-            payload=payload,
-            output_dir=output_dir,
-            filename=filename,
-            options=options,
-            template_image=template_image,
-        )
+        with llm_observability_session():
+            renderer = GenerativeImageRenderer()
+            result = renderer.render(
+                payload=payload,
+                output_dir=output_dir,
+                filename=filename,
+                options=options,
+                template_image=template_image,
+            )
 
         output_files = [
             get_file_info(result.prompt_path),
@@ -895,6 +901,7 @@ def iterate_command(
     try:
         from .iterate import SpecModifier
         from .dashboard.composer import DashboardComposer
+        from .observability import llm_observability_session
 
         if not feedback:
             output_json({
@@ -920,11 +927,12 @@ def iterate_command(
         image_path = Path(previous_image) if previous_image else None
 
         # Interpret feedback and generate modifications
-        modifications = modifier.interpret_feedback(
-            feedback=feedback,
-            current_spec=spec,
-            image_path=image_path,
-        )
+        with llm_observability_session():
+            modifications = modifier.interpret_feedback(
+                feedback=feedback,
+                current_spec=spec,
+                image_path=image_path,
+            )
 
         # Apply modifications
         new_spec = modifier.apply_modifications(spec, modifications)
