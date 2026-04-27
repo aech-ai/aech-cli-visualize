@@ -1,0 +1,68 @@
+{
+  "title": "Agent Aech Session Spend Anomaly",
+  "instructions": "Create an executive operations visual that explains the spend spike and shows what changed.",
+  "data": {
+    "date": ["2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24", "2026-04-25", "2026-04-26"],
+    "session_count": [82, 79, 84, 86, 91, 88, 93],
+    "spend_usd": [412, 438, 1240, 462, 489, 471, 502],
+    "avg_tokens_per_session": [18200, 19100, 56700, 20400, 21100, 19700, 21800],
+    "tool_retries": [14, 11, 63, 17, 18, 16, 20]
+  },
+  "analysis": {
+    "headline": "Wednesday spend spiked 2.9x without a matching session-volume increase",
+    "narrative": "Session count stayed within the normal weekly band, but tokens per session and tool retries surged on 2026-04-22, pointing to inefficient agent loops rather than demand growth.",
+    "key_metrics": [
+      {
+        "label": "Peak spend",
+        "value": "$1,240",
+        "context": "2026-04-22"
+      },
+      {
+        "label": "Spend multiple",
+        "value": "2.9x",
+        "context": "vs prior two-day average"
+      },
+      {
+        "label": "Tool retries",
+        "value": "63",
+        "context": "5.7x Tuesday"
+      }
+    ],
+    "insights": [
+      {
+        "label": "Demand was not the cause",
+        "explanation": "Session count moved from 79 to 84, but spend jumped from $438 to $1,240.",
+        "severity": "warning",
+        "evidence": ["2026-04-21 sessions: 79", "2026-04-22 sessions: 84"]
+      },
+      {
+        "label": "Retry loops likely drove cost",
+        "explanation": "Tool retries rose to 63 while average tokens per session reached 56.7k.",
+        "severity": "critical",
+        "evidence": ["tool_retries: 63", "avg_tokens_per_session: 56,700"]
+      }
+    ],
+    "recommended_visuals": [
+      {
+        "kind": "line_chart",
+        "title": "Daily spend with anomaly marker",
+        "fields": ["date", "spend_usd"],
+        "purpose": "Show the one-day spend spike in context."
+      },
+      {
+        "kind": "bar_chart",
+        "title": "Retry count by day",
+        "fields": ["date", "tool_retries"],
+        "purpose": "Connect the anomaly to retry behavior."
+      },
+      {
+        "kind": "kpi_card",
+        "title": "Peak spend and retry multiple",
+        "fields": ["spend_usd", "tool_retries"],
+        "purpose": "Make the operational risk immediately visible."
+      }
+    ],
+    "layout_guidance": "Use a clean executive dashboard: KPI strip on top, annotated spend trend as the main visual, compact retry comparison on the side.",
+    "warnings": ["This is sample data for concept testing."]
+  }
+}

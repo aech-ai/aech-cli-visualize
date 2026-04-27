@@ -47,6 +47,7 @@ Model format is `provider:model` (e.g., `anthropic:claude-sonnet-4-20250514`, `o
 | `table` | Styled data tables as images |
 | `gauge` | Progress/status indicators with thresholds |
 | `dashboard` | Multi-widget composition in grid layout |
+| `image` | GPT Image generated analytical visualizations from data + typed analysis |
 
 ## Usage Examples
 
@@ -104,6 +105,80 @@ cat << 'EOF' | aech-cli-visualize dashboard --output-dir ./out --theme corporate
 EOF
 ```
 
+### Generative Image Visualization
+
+```bash
+# Dry run: build the typed analysis/prompt artifacts without calling GPT Image
+aech-cli-visualize image examples/generative/agent-spend-anomaly.json \
+  --output-dir ./out \
+  --analysis-mode precomputed \
+  --dry-run
+
+# Live render with GPT Image 2; requires OPENAI_API_KEY
+aech-cli-visualize image examples/generative/agent-spend-anomaly.json \
+  --output-dir ./out \
+  --analysis-mode precomputed \
+  --quality high \
+  --size 2048x1152 \
+  --generate
+
+# Quiet embedded chart-card replacement
+aech-cli-visualize image examples/generative/agent-spend-anomaly.json \
+  --output-dir ./out \
+  --analysis-mode precomputed \
+  --surface embedded-card \
+  --size 1536x1024 \
+  --no-header \
+  --generate
+
+# Let the CLI analyze raw data first, then generate the visualization
+cat data.json | aech-cli-visualize image \
+  --output-dir ./out \
+  --title "Weekly Activation Trend" \
+  --instructions "Explain trend quality and highlight inflection points" \
+  --analysis-mode llm
+
+# Agentic analysis for larger datasets: generate Python analysis code, run it
+# against the full payload, then brief GPT Image from compact derived results
+cat sessions.json | aech-cli-visualize image \
+  --output-dir ./out \
+  --title "Session Spend Analysis" \
+  --instructions "Explain why spend jumped and cite the driving sessions" \
+  --analysis-mode code \
+  --surface embedded-card \
+  --generate
+
+# Use a prior image as a visual-consistency reference
+aech-cli-visualize image examples/generative/revenue-pipeline-dashboard.json \
+  --output-dir ./out \
+  --analysis-mode precomputed \
+  --template-image ./templates/board-style.png
+```
+
+The `image` command writes the generated image plus prompt and analysis audit artifacts:
+
+```json
+{
+  "success": true,
+  "output_files": [
+    {"path": "./out/generative_visual.png", "format": "png", "size_bytes": 123456},
+    {"path": "./out/generative_visual.prompt.txt", "format": "txt", "size_bytes": 3200},
+    {"path": "./out/generative_visual.analysis.json", "format": "json", "size_bytes": 1800}
+  ],
+  "backend": "gpt-image",
+  "image_api": "images",
+  "image_model": "gpt-image-2",
+  "response_model": null,
+  "analysis_mode": "precomputed"
+}
+```
+
+The generative path does not fall back to Plotly, Delight, or rule-based analysis. The final raster step calls the OpenAI Images API directly with `gpt-image-2`; `--template-image` uses image edit mode with the previous visual as a consistency reference. If `OPENAI_API_KEY` is missing and LLM analysis or image generation is required, the command fails with a structured JSON error.
+
+By default, the `image` command targets a PowerPoint-friendly landscape slide (`--surface slide`, `--size 2048x1152`, `--no-header`). For replacing a chart inside an app page, use `--surface embedded-card` and optionally pass a screenshot or existing chart frame with `--template-image` so GPT Image can preserve the page's visual rhythm while replacing the chart content with an analysis-rich image.
+
+`--analysis-mode code` is intended for data that is too large or detailed to put directly in the image prompt. The CLI profiles and samples the payload, asks the analysis model to write a constrained `analyze(data)` Python function, validates the code, runs it on a sample, runs it on the full payload, and sends only compact chart-ready results to the image prompt. It writes extra audit files beside the image: `*.analysis_code.py`, `*.analysis_sample.json`, and `*.analysis_full.json`. If generated code fails validation or execution, the command fails; no fallback image is produced.
+
 ## Input Schemas
 
 ### Chart Data
@@ -150,6 +225,47 @@ EOF
       "config": { }     // Widget-specific config
     }
   ]
+}
+```
+
+### Generative Image Payload
+
+The `image` command accepts raw data directly, or a wrapped payload with optional typed analysis:
+
+```json
+{
+  "title": "Agent Aech Session Spend Anomaly",
+  "instructions": "Explain the spend spike and show what changed.",
+  "data": {
+    "date": ["2026-04-20", "2026-04-21", "2026-04-22"],
+    "spend_usd": [412, 438, 1240],
+    "tool_retries": [14, 11, 63]
+  },
+  "analysis": {
+    "headline": "Wednesday spend spiked 2.9x without session-volume growth",
+    "narrative": "Spend, tokens per session, and retries rose together, pointing to agent loops.",
+    "key_metrics": [
+      {"label": "Peak spend", "value": "$1,240", "context": "2026-04-22"}
+    ],
+    "insights": [
+      {
+        "label": "Retry loops likely drove cost",
+        "explanation": "Retries rose to 63 while average tokens per session also spiked.",
+        "severity": "critical",
+        "evidence": ["tool_retries: 63"]
+      }
+    ],
+    "recommended_visuals": [
+      {
+        "kind": "line_chart",
+        "title": "Daily spend with anomaly marker",
+        "fields": ["date", "spend_usd"],
+        "purpose": "Show the one-day spend spike in context."
+      }
+    ],
+    "layout_guidance": "KPI strip on top, annotated spend trend as the main visual.",
+    "warnings": []
+  }
 }
 ```
 

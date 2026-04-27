@@ -1,0 +1,62 @@
+{
+  "title": "Business Pipeline Snapshot",
+  "instructions": "Produce a board-ready visual with pipeline health, segment concentration, and likely quarter risk.",
+  "data": {
+    "segment": ["Enterprise", "Mid-market", "SMB", "Partner"],
+    "pipeline_usd": [4200000, 2100000, 780000, 1250000],
+    "weighted_forecast_usd": [2310000, 1218000, 273000, 812000],
+    "win_rate_percent": [55, 58, 35, 65],
+    "avg_cycle_days": [82, 49, 28, 61]
+  },
+  "analysis": {
+    "headline": "Enterprise owns the pipeline, but partner deals convert most efficiently",
+    "narrative": "Enterprise contributes the largest absolute weighted forecast, while Partner shows the best win rate. SMB has the lowest win rate and smallest weighted contribution.",
+    "key_metrics": [
+      {
+        "label": "Total pipeline",
+        "value": "$8.33M",
+        "context": "all segments"
+      },
+      {
+        "label": "Weighted forecast",
+        "value": "$4.61M",
+        "context": "probability weighted"
+      },
+      {
+        "label": "Best win rate",
+        "value": "65%",
+        "context": "Partner"
+      }
+    ],
+    "insights": [
+      {
+        "label": "Enterprise concentration",
+        "explanation": "Enterprise is 50% of raw pipeline and 50% of weighted forecast.",
+        "severity": "info",
+        "evidence": ["Enterprise pipeline: $4.2M", "Total pipeline: $8.33M"]
+      },
+      {
+        "label": "SMB drag",
+        "explanation": "SMB has the fastest cycle but only a 35% win rate.",
+        "severity": "warning",
+        "evidence": ["SMB win rate: 35%", "SMB cycle: 28 days"]
+      }
+    ],
+    "recommended_visuals": [
+      {
+        "kind": "bar_chart",
+        "title": "Pipeline vs weighted forecast by segment",
+        "fields": ["segment", "pipeline_usd", "weighted_forecast_usd"],
+        "purpose": "Compare raw and probability-adjusted opportunity value."
+      },
+      {
+        "kind": "scatter_plot",
+        "title": "Win rate vs cycle days",
+        "fields": ["win_rate_percent", "avg_cycle_days", "segment"],
+        "purpose": "Reveal efficiency tradeoffs by segment."
+      }
+    ],
+    "layout_guidance": "Use two strong visuals with metric callouts: horizontal bar comparison on the left, efficiency scatter on the right.",
+    "warnings": ["Pipeline values are sample data."]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "title": "Weekly Activation Trend",
+  "instructions": "Create a product analytics visual that explains trend quality, not just growth.",
+  "data": {
+    "week": ["2026-W08", "2026-W09", "2026-W10", "2026-W11", "2026-W12", "2026-W13", "2026-W14", "2026-W15"],
+    "new_accounts": [420, 456, 488, 512, 590, 630, 702, 760],
+    "activated_accounts": [188, 211, 238, 251, 319, 363, 435, 486],
+    "activation_rate_percent": [44.8, 46.3, 48.8, 49.0, 54.1, 57.6, 62.0, 63.9]
+  },
+  "analysis": {
+    "headline": "Activation improved for eight straight weeks",
+    "narrative": "New account volume increased 81%, while activated accounts grew 159%, lifting activation rate from 44.8% to 63.9%. Growth quality improved alongside volume.",
+    "key_metrics": [
+      {
+        "label": "New account growth",
+        "value": "+81%",
+        "context": "2026-W08 to 2026-W15"
+      },
+      {
+        "label": "Activated account growth",
+        "value": "+159%",
+        "context": "2026-W08 to 2026-W15"
+      },
+      {
+        "label": "Activation rate",
+        "value": "63.9%",
+        "context": "2026-W15"
+      }
+    ],
+    "insights": [
+      {
+        "label": "Quality improved faster than volume",
+        "explanation": "Activated accounts grew nearly twice as fast as new accounts.",
+        "severity": "positive",
+        "evidence": ["new_accounts: 420 to 760", "activated_accounts: 188 to 486"]
+      },
+      {
+        "label": "No weekly regression",
+        "explanation": "Activation rate rose every week in the sample.",
+        "severity": "positive",
+        "evidence": ["44.8%", "46.3%", "48.8%", "49.0%", "54.1%", "57.6%", "62.0%", "63.9%"]
+      }
+    ],
+    "recommended_visuals": [
+      {
+        "kind": "line_chart",
+        "title": "Activation rate by week",
+        "fields": ["week", "activation_rate_percent"],
+        "purpose": "Show the consistent quality trend."
+      },
+      {
+        "kind": "bar_chart",
+        "title": "New vs activated accounts",
+        "fields": ["week", "new_accounts", "activated_accounts"],
+        "purpose": "Show that activation growth outpaced account growth."
+      }
+    ],
+    "layout_guidance": "Use a product analytics panel with a large activation-rate trend and supporting volume comparison.",
+    "warnings": ["This is sample data for concept testing."]
+  }
+}

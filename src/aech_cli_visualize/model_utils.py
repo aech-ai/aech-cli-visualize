@@ -80,3 +80,29 @@ def get_model_settings(model_string: str):
         return AnthropicModelSettings(**kwargs) if kwargs else None
 
     return None
+
+
+def build_pydantic_ai_model(model_string: str, *, api_key: str | None = None):
+    """Build a pydantic-ai model, preserving provider-prefixed model strings."""
+    model_name, _ = parse_model_string(model_string)
+
+    if model_name.startswith("openai-responses:"):
+        from pydantic_ai.models.openai import OpenAIResponsesModel
+
+        raw_model = model_name.split(":", 1)[1]
+        if api_key:
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            return OpenAIResponsesModel(raw_model, provider=OpenAIProvider(api_key=api_key))
+        return model_name
+
+    if ":" not in model_name:
+        from pydantic_ai.models.openai import OpenAIResponsesModel
+
+        if api_key:
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            return OpenAIResponsesModel(model_name, provider=OpenAIProvider(api_key=api_key))
+        return f"openai-responses:{model_name}"
+
+    return model_name
