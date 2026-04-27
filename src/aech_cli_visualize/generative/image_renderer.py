@@ -43,6 +43,7 @@ class ImageGenerationOptions:
     """Generation settings for GPT Image."""
 
     image_model: str = "gpt-image-2"
+    response_model: str = "gpt-5.5"
     analysis_model: str = "gpt-5.5"
     analysis_mode: AnalysisMode = "auto"
     size: str = "2048x1152"
@@ -196,6 +197,7 @@ class GenerativeImageRenderer:
                 api_key=self.api_key,
                 output_dir=output_dir,
                 filename=filename,
+                max_prompt_data_chars=options.max_data_chars,
             )
             return result.analysis, result.prompt_data
 
@@ -272,6 +274,7 @@ class GenerativeImageRenderer:
 
         tool: dict[str, Any] = {
             "type": "image_generation",
+            "model": options.image_model,
             "size": options.size,
             "quality": options.quality,
             "output_format": options.output_format,
@@ -280,18 +283,20 @@ class GenerativeImageRenderer:
         if options.output_compression is not None:
             tool["output_compression"] = options.output_compression
 
-        client = OpenAI(api_key=self.api_key)
+        client = OpenAI(api_key=self.api_key, timeout=900.0)
         with observed_llm_role("executor"), timed_llm_call() as elapsed_ms:
             try:
                 response = client.responses.create(
-                    model=options.image_model,
+                    model=options.response_model,
                     input=[{"role": "user", "content": content}],
                     tools=[tool],
                     tool_choice={"type": "image_generation"},
                 )
             except Exception as exc:
+                error_detail = _format_exception_chain(exc)
                 append_llm_log_entry({
                     "model": options.image_model,
+                    "response_model": options.response_model,
                     "operation": "chat",
                     "tool_name": "image_generation",
                     "input_tokens": 0,
@@ -301,9 +306,9 @@ class GenerativeImageRenderer:
                     "cache_creation_tokens": 0,
                     "duration_ms": elapsed_ms(),
                     "status": "ERROR",
-                    "error": str(exc),
+                    "error": error_detail,
                 })
-                raise
+                raise RuntimeError(f"Image generation failed: {error_detail}") from exc
 
         image_base64 = _extract_response_image_result(response)
         if not image_base64:
@@ -313,6 +318,7 @@ class GenerativeImageRenderer:
         cost_usd = _estimate_gpt_image_2_cost_usd(options.image_model, usage)
         append_llm_log_entry({
             "model": options.image_model,
+            "response_model": options.response_model,
             "operation": "chat",
             "tool_name": "image_generation",
             "input_tokens": usage["input_tokens"],
@@ -340,6 +346,15 @@ def _extract_response_image_result(response: Any) -> str | None:
             result = getattr(output, "result", None)
             return str(result) if result else None
     return None
+
+
+def _format_exception_chain(exc: BaseException) -> str:
+    parts = [f"{type(exc).__name__}: {exc}"]
+    cause = exc.__cause__
+    while cause is not None and len(parts) < 8:
+        parts.append(f"{type(cause).__name__}: {cause}")
+        cause = cause.__cause__
+    return " | caused by ".join(parts)
 
 
 def _normalize_openai_usage(usage: Any) -> dict[str, int]:

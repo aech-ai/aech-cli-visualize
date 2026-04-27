@@ -534,6 +534,10 @@ def image_command(
         str,
         typer.Option("--image-model", help="GPT Image model for raster generation"),
     ] = "gpt-image-2",
+    response_model: Annotated[
+        str,
+        typer.Option("--response-model", help="Responses API model that calls the image generation tool"),
+    ] = "gpt-5.5",
     surface: Annotated[
         str,
         typer.Option("--surface", help="Target surface: slide or embedded-card"),
@@ -561,7 +565,7 @@ def image_command(
     max_data_chars: Annotated[
         int,
         typer.Option("--max-data-chars", help="Maximum serialized data chars allowed in model prompts"),
-    ] = 18_000,
+    ] = 2_000,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run/--generate", help="Write prompt/analysis artifacts without calling GPT Image"),
@@ -615,6 +619,7 @@ def image_command(
         )
         options = ImageGenerationOptions(
             image_model=image_model,
+            response_model=response_model,
             analysis_model=analysis_model,
             analysis_mode=analysis_mode,  # type: ignore[arg-type]
             size=size or ("2048x1152" if surface == "slide" else "1536x1024"),
@@ -649,6 +654,7 @@ def image_command(
             "output_files": output_files,
             "backend": "gpt-image",
             "image_model": image_model,
+            "response_model": response_model,
             "analysis_model": analysis_model,
             "analysis_mode": analysis_mode,
             "surface": surface,

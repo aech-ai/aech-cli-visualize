@@ -78,9 +78,26 @@ def test_build_image_prompt_includes_data_analysis_and_constraints() -> None:
     assert "Spend anomaly detected" in prompt
     assert "Wednesday spike" in prompt
     assert '"spend_usd"' in prompt
-    assert "Do not invent values outside this data" in prompt
-    assert "quiet in-app analytical card" in prompt
-    assert "Do not create a large header band" in prompt
+    assert "Use only these values; do not infer new numbers" in prompt
+    assert "Quiet in-app analytical card" in prompt
+    assert "No large header band" in prompt
+
+
+def test_build_image_prompt_treats_template_as_composition_contract() -> None:
+    analysis = VisualizationAnalysis.model_validate(_analysis_dict())
+    prompt = build_image_prompt(
+        data={"date": ["Mon", "Tue"], "spend_usd": [420, 1240]},
+        analysis=analysis,
+        title="Agent spend",
+        instructions="Highlight anomalies.",
+        output_format="png",
+        surface="embedded-card",
+        include_header=False,
+        template_image="/tmp/template.png",
+    )
+
+    assert "primary composition contract" in prompt
+    assert "Apply the user's requested changes" in prompt
 
 
 def test_image_command_dry_run_with_precomputed_analysis(tmp_path) -> None:

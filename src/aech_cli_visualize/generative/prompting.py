@@ -8,12 +8,12 @@ from typing import Any
 from .models import VisualizationAnalysis
 
 
-MAX_PROMPT_DATA_CHARS = 18_000
+MAX_PROMPT_DATA_CHARS = 2_000
 
 
 def serialize_data_for_prompt(data: dict[str, Any], max_chars: int = MAX_PROMPT_DATA_CHARS) -> str:
     """Serialize data for the image prompt and fail if it is too large."""
-    serialized = json.dumps(data, indent=2, sort_keys=True, default=str)
+    serialized = json.dumps(data, separators=(",", ":"), sort_keys=True, default=str)
     if len(serialized) > max_chars:
         raise ValueError(
             "Data is too large for a single image-generation prompt "
@@ -35,86 +35,74 @@ def build_image_prompt(
     template_image: str | None = None,
     max_data_chars: int = MAX_PROMPT_DATA_CHARS,
 ) -> str:
-    """Build the final GPT Image prompt from typed analysis and source data."""
+    """Build the final GPT Image prompt from typed analysis and condensed visual evidence."""
     serialized_data = serialize_data_for_prompt(data, max_chars=max_data_chars)
     metrics = [
         f"- {metric.label}: {metric.value}"
         + (f" ({metric.context})" if metric.context else "")
-        for metric in analysis.key_metrics
+        for metric in analysis.key_metrics[:5]
     ]
     insights = [
         f"- [{insight.severity}] {insight.label}: {insight.explanation}"
-        + (f" Evidence: {'; '.join(insight.evidence)}" if insight.evidence else "")
-        for insight in analysis.insights
+        + (f" Evidence: {'; '.join(insight.evidence[:2])}" if insight.evidence else "")
+        for insight in analysis.insights[:4]
     ]
     visuals = [
         f"- {visual.kind}: {visual.title}. Purpose: {visual.purpose}. "
         f"Fields: {', '.join(visual.fields) if visual.fields else 'not specified'}"
-        for visual in analysis.recommended_visuals
+        for visual in analysis.recommended_visuals[:3]
     ]
-    warnings = [f"- {warning}" for warning in analysis.warnings]
+    warnings = [f"- {warning}" for warning in analysis.warnings[:3]]
 
     template_guidance = (
-        "Use the provided template/reference image only for visual consistency: "
-        "layout rhythm, typography feel, color discipline, and overall polish. "
-        "Replace its content with the data and analysis below."
+        "The provided template/reference image is the primary composition contract. "
+        "Reproduce its layout rhythm, chart structure, annotation density, typography hierarchy, "
+        "and color discipline as faithfully as possible. Apply the user's requested changes, "
+        "then replace visible content with the data and analysis below."
         if template_image
         else "No template/reference image is provided; create a complete original visualization."
     )
     if surface == "embedded-card":
         surface_guidance = (
-            "Create a quiet in-app analytical card that can replace an existing chart panel. "
-            "Use a light product UI surface, restrained typography, subtle borders, and muted accents. "
-            "Do not include browser chrome, page navigation, app toolbar controls, or a large page header."
+            "Quiet in-app analytical card; light product UI surface; restrained typography; "
+            "subtle borders; muted accents; no browser chrome or page navigation."
         )
     else:
         surface_guidance = (
-            "Create a PowerPoint-ready 16:9 landscape analytical slide. "
-            "Use the whole canvas efficiently with calm executive-report styling and clear margins."
+            "PowerPoint-ready 16:9 analytical slide with calm executive-report styling."
         )
 
     header_guidance = (
         "A compact title/header is allowed if it materially improves comprehension."
         if include_header
-        else "Do not create a large header band, hero title, mascot, logo block, or decorative top banner. Use at most a small inline title/caption."
+        else "No large header band, hero title, mascot, logo block, or decorative top banner."
     )
 
     return "\n".join([
-        "Use case: productivity-visual",
-        "Asset type: executive analytical data visualization",
-        f"Primary request: Create one polished {output_format.upper()} image where analysis and visualization are integrated.",
-        f"Surface: {surface}",
-        f"Surface guidance: {surface_guidance}",
-        f"Header guidance: {header_guidance}",
-        f"Title: {title or analysis.headline}",
-        f"Analysis headline: {analysis.headline}",
-        f"Narrative: {analysis.narrative}",
-        f"User instructions: {instructions or 'Use the typed analysis to choose the clearest visual story.'}",
-        f"Template guidance: {template_guidance}",
+        f"Create one polished {output_format.upper()} analytical visualization.",
+        f"Surface: {surface}. {surface_guidance}",
+        f"Header: {header_guidance}",
+        f"Title/caption: {title or analysis.headline}",
+        f"Headline: {analysis.headline}",
+        f"Question: {instructions or 'Analyze the dataset for a clear visual.'}",
+        f"Story: {analysis.narrative}",
+        f"Template: {template_guidance}",
         "",
-        "Key metrics to render visibly:",
+        "Visible metrics:",
         "\n".join(metrics) if metrics else "- None specified",
         "",
-        "Insights to integrate into chart annotations, callouts, or side notes:",
+        "Callouts:",
         "\n".join(insights) if insights else "- None specified",
         "",
-        "Recommended visual elements:",
+        "Visual elements:",
         "\n".join(visuals) if visuals else "- Choose the smallest clear set of visuals from the analysis.",
         "",
-        f"Layout guidance: {analysis.layout_guidance}",
-        "",
-        "Known cautions:",
+        f"Layout: {analysis.layout_guidance}",
+        "Cautions:",
         "\n".join(warnings) if warnings else "- None",
         "",
-        "Source data to visualize. Do not invent values outside this data:",
+        "Condensed visual evidence JSON. Use only these values; do not infer new numbers:",
         serialized_data,
         "",
-        "Rendering constraints:",
-        "- The image must contain both the visualized data and the analytical interpretation.",
-        "- Prefer a single coherent dashboard/poster over separate disconnected charts.",
-        "- Use exact labels and numeric values from the source data and typed analysis wherever visible.",
-        "- Keep text concise and legible; prioritize the headline, key metrics, and most important insight callouts.",
-        "- Avoid loud poster styling: no oversized hero header, heavy dark banner, decorative mascot, or excessive red emphasis.",
-        "- If there is too much data for every value to be legible, summarize visually and call out the important values explicitly.",
-        "- Do not include watermarks, fake UI chrome, or placeholder lorem ipsum.",
+        "Constraints: exact visible numbers only; concise legible text; one coherent visual; no watermark or placeholder text.",
     ])

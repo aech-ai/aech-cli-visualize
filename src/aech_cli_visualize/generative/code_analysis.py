@@ -33,14 +33,30 @@ It must return a JSON-serializable dict with exactly these top-level keys:
 
 {
   "analysis_data": { ... compact findings, metrics, annotations, evidence rows ... },
-  "prompt_data": { ... compact chart-ready data/evidence for image generation ... }
+  "prompt_data": { ... tiny visual evidence brief for image generation ... }
 }
 
 Use pandas through the provided global name `pd` if helpful. Imports are only
-allowed for pandas, json, math, statistics, datetime, and collections.
+allowed for pandas, json, math, statistics, datetime, time, typing, and collections.
 Do not read files, write files, use network, inspect the process, or call external commands.
+The sandbox provides safe_float(value, default=0.0) and safe_int(value, default=0).
+Use them for every visible numeric value and for DataFrame rows after joins,
+groupby, concat, nlargest, or resampling. Never write int(float(value)); it fails
+on missing pandas values.
 Ground every number in the provided data shape, sample rows, and deterministic profile.
 Prefer concise derived series, ranked evidence rows, and annotations over raw row dumps.
+Use the full dataset to compute aggregates, rankings, and representative points,
+but keep returned data compact enough for one image prompt. Never return one
+point per row unless the dataset has fewer than 160 rows.
+The prompt_data object is not for re-analysis. It is the final evidence package
+for the image model. Include only visible values: 3-5 KPIs, 3-8 chart points,
+2-4 callouts, and 2-6 evidence rows. Use short keys and short strings.
+If data.template_reference.visual_schema is present, prompt_data must follow
+that schema so the saved template image can be regenerated consistently. Keep
+the same top-level keys, collection shapes, and semantic field meanings while
+updating all values from the current dataset.
+When using pandas frequency or resampling aliases, use lowercase strings such
+as "2h" instead of deprecated uppercase aliases such as "2H".
 """
 
 
@@ -126,7 +142,7 @@ _BLOCKED_ATTRS = {
     "to_xml",
 }
 
-_ALLOWED_IMPORT_ROOTS = {"collections", "datetime", "json", "math", "pandas", "statistics"}
+_ALLOWED_IMPORT_ROOTS = {"collections", "datetime", "json", "math", "pandas", "statistics", "time", "typing"}
 
 
 def analyze_with_generated_code(
@@ -139,43 +155,75 @@ def analyze_with_generated_code(
     output_dir: str | Path,
     filename: str,
     timeout_seconds: int = 20,
+    max_prompt_data_chars: int = 2_000,
 ) -> CodeAnalysisResult:
     """Generate, validate, and execute Python analysis against the full dataset."""
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is required for code analysis mode.")
-
-    code = _generate_analysis_code(
-        data=data,
-        title=title,
-        instructions=instructions,
-        model=model,
-        api_key=api_key,
-    )
-    _validate_analysis_code(code)
 
     output_directory = Path(output_dir)
     output_directory.mkdir(parents=True, exist_ok=True)
     code_path = output_directory / f"{filename}.analysis_code.py"
     sample_result_path = output_directory / f"{filename}.analysis_sample.json"
     full_result_path = output_directory / f"{filename}.analysis_full.json"
-    code_path.write_text(code, encoding="utf-8")
 
-    sample_data = _sample_value(data)
-    sample_raw = _run_analysis_code(
-        code=code,
-        data=sample_data,
-        output_path=sample_result_path,
-        timeout_seconds=timeout_seconds,
-    )
-    _validate_raw_result(sample_raw, sample=True)
+    retry_feedback: str | None = None
+    code = ""
+    full_raw: dict[str, Any] = {}
+    prompt_data: dict[str, Any] = {}
+    for attempt in range(3):
+        code = _generate_analysis_code(
+            data=data,
+            title=title,
+            instructions=instructions,
+            model=model,
+            api_key=api_key,
+            max_prompt_data_chars=max_prompt_data_chars,
+            retry_feedback=retry_feedback,
+        )
+        code_path.write_text(code, encoding="utf-8")
+        try:
+            _validate_analysis_code(code)
 
-    full_raw = _run_analysis_code(
-        code=code,
-        data=data,
-        output_path=full_result_path,
-        timeout_seconds=timeout_seconds,
-    )
-    prompt_data = _validate_raw_result(full_raw, sample=False)
+            sample_data = _sample_value(data)
+            sample_raw = _run_analysis_code(
+                code=code,
+                data=sample_data,
+                output_path=sample_result_path,
+                timeout_seconds=timeout_seconds,
+            )
+            _validate_raw_result(sample_raw, sample=True)
+
+            full_raw = _run_analysis_code(
+                code=code,
+                data=data,
+                output_path=full_result_path,
+                timeout_seconds=timeout_seconds,
+            )
+            prompt_data = _validate_raw_result(full_raw, sample=False)
+            prompt_data_chars = _serialized_chars(prompt_data)
+            if prompt_data_chars <= max_prompt_data_chars:
+                break
+            raise CodeAnalysisFailure(
+                f"Generated prompt_data is too large ({prompt_data_chars} chars > "
+                f"{max_prompt_data_chars}). Aggregate more aggressively: keep at most "
+                "8 chart points, 4 callouts, 6 evidence rows, short IDs, short "
+                "timestamps, and no raw rows."
+            )
+        except CodeAnalysisFailure as exc:
+            if attempt == 2:
+                raise
+            retry_feedback = (
+                f"Previous generated analysis code failed: {str(exc)[:1400]}. "
+                "Rewrite the entire analyze(data) function to avoid that failure "
+                "while preserving the user's requested analysis."
+            )
+            continue
+        else:
+            break
+    else:
+        raise CodeAnalysisFailure(retry_feedback or "Generated analysis code failed.")
+
     analysis = _brief_from_code_result(
         raw_result=full_raw,
         title=title,
@@ -199,9 +247,12 @@ def _generate_analysis_code(
     instructions: str | None,
     model: str,
     api_key: str,
+    max_prompt_data_chars: int,
+    retry_feedback: str | None,
 ) -> str:
     profile = _profile_value(data)
     sample = _sample_value(data)
+    visual_schema = _template_visual_schema(data)
     agent: Agent[None, GeneratedAnalysisProgram] = Agent(
         build_pydantic_ai_model(model, api_key=api_key),
         output_type=GeneratedAnalysisProgram,
@@ -212,6 +263,18 @@ def _generate_analysis_code(
         [
             f"Title: {title or 'Untitled visualization'}",
             f"User question/instructions: {instructions or 'Analyze the dataset for a clear visual.'}",
+            f"Hard prompt_data budget: compact JSON serialization must be <= {max_prompt_data_chars} chars.",
+            "Return final image evidence only, not chart-ready source data.",
+            "Maximums: 5 KPIs, 8 chart points, 4 callouts, 6 evidence rows, and short strings.",
+            *(
+                [
+                    "Template visual schema JSON. The returned prompt_data must conform to this contract:",
+                    json.dumps(visual_schema, indent=2, sort_keys=True, default=str),
+                ]
+                if visual_schema
+                else []
+            ),
+            *(["Correction required:", retry_feedback] if retry_feedback else []),
             "Dataset profile JSON:",
             json.dumps(profile, indent=2, sort_keys=True, default=str),
             "Cheap sample JSON:",
@@ -221,6 +284,21 @@ def _generate_analysis_code(
     with observed_llm_role("executor"):
         response = agent.run_sync(prompt)
     return response.output.code
+
+
+def _template_visual_schema(data: dict[str, Any]) -> dict[str, Any] | None:
+    template_reference = data.get("template_reference")
+    if not isinstance(template_reference, dict):
+        return None
+    visual_schema = template_reference.get("visual_schema")
+    if isinstance(visual_schema, dict) and visual_schema:
+        return visual_schema
+    analysis_result = template_reference.get("analysis_result")
+    if isinstance(analysis_result, dict):
+        prompt_data = analysis_result.get("prompt_data")
+        if isinstance(prompt_data, dict) and prompt_data:
+            return {"prompt_data": _profile_value(prompt_data)}
+    return None
 
 
 def _validate_analysis_code(code: str) -> None:
@@ -255,6 +333,29 @@ def _validate_analysis_code(code: str) -> None:
                 raise CodeAnalysisFailure(f"Generated analysis code calls blocked function: {func.id}")
             if isinstance(func, ast.Attribute) and func.attr in _BLOCKED_ATTRS:
                 raise CodeAnalysisFailure(f"Generated analysis code calls blocked attribute: {func.attr}")
+            if (
+                isinstance(func, ast.Name)
+                and func.id == "int"
+                and node.args
+                and isinstance(node.args[0], ast.Call)
+                and isinstance(node.args[0].func, ast.Name)
+                and node.args[0].func.id == "float"
+            ):
+                raise CodeAnalysisFailure(
+                    "Generated analysis code uses int(float(...)); use safe_int(value) "
+                    "so pandas NaN/NA values are handled explicitly."
+                )
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "astype"
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "int"
+            ):
+                raise CodeAnalysisFailure(
+                    "Generated analysis code uses astype(int); use safe_int/safe_float "
+                    "after filling missing values explicitly."
+                )
 
 
 def _run_analysis_code(
@@ -270,6 +371,7 @@ def _run_analysis_code(
         import math
         import statistics
         import sys
+        import time
         from collections import Counter, defaultdict
         from datetime import datetime, timezone
 
@@ -278,9 +380,28 @@ def _run_analysis_code(
         code_path, input_path, output_path = sys.argv[1:4]
         code = open(code_path, "r", encoding="utf-8").read()
         data = json.loads(open(input_path, "r", encoding="utf-8").read())
+        def safe_float(value, default=0.0):
+            try:
+                if value is None:
+                    return float(default)
+                if pd.isna(value):
+                    return float(default)
+                return float(value)
+            except Exception:
+                return float(default)
+
+        def safe_int(value, default=0):
+            try:
+                number = safe_float(value, default)
+                if math.isnan(number) or math.isinf(number):
+                    return int(default)
+                return int(number)
+            except Exception:
+                return int(default)
+
         def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
             root = name.split(".", 1)[0]
-            if root not in {"collections", "datetime", "json", "math", "pandas", "statistics"}:
+            if root not in {"collections", "datetime", "json", "math", "pandas", "statistics", "time", "typing"}:
                 raise ImportError(f"blocked import: {name}")
             return __import__(name, globals, locals, fromlist, level)
 
@@ -335,7 +456,10 @@ def _run_analysis_code(
             "json": json,
             "math": math,
             "pd": pd,
+            "safe_float": safe_float,
+            "safe_int": safe_int,
             "statistics": statistics,
+            "time": time,
             "timezone": timezone,
         }
         exec(compile(code, code_path, "exec"), namespace, namespace)
@@ -392,6 +516,10 @@ def _validate_raw_result(raw: dict[str, Any], *, sample: bool) -> dict[str, Any]
             "Return compact derived data, not raw rows."
         )
     return prompt_data
+
+
+def _serialized_chars(value: Any) -> int:
+    return len(json.dumps(value, separators=(",", ":"), sort_keys=True, default=str))
 
 
 def _brief_from_code_result(
