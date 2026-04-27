@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from aech_cli_visualize.generative.image_renderer import (
+    GenerativeImageRenderer,
+    ImageGenerationOptions,
     _estimate_gpt_image_2_cost_usd,
     _extract_images_api_result,
     _is_retryable_image_error,
@@ -191,6 +194,46 @@ def test_retryable_image_error_classification() -> None:
     assert not _is_retryable_image_error(
         "BadRequestError: Error code: 400 - {'error': {'code': 'model_not_found'}}"
     )
+
+
+def test_gpt_image_2_template_edit_omits_unsupported_input_fidelity(monkeypatch, tmp_path) -> None:
+    template_path = tmp_path / "template.png"
+    template_path.write_bytes(b"template")
+    image_base64 = base64.b64encode(b"image-bytes").decode("ascii")
+
+    class FakeImages:
+        def __init__(self) -> None:
+            self.edit_kwargs: dict | None = None
+
+        def edit(self, **kwargs):
+            self.edit_kwargs = kwargs
+            image_data = type("ImageData", (), {"b64_json": image_base64})()
+            return type("Response", (), {"data": [image_data], "usage": None})()
+
+    class FakeOpenAI:
+        last_instance: "FakeOpenAI | None" = None
+
+        def __init__(self, **_kwargs) -> None:
+            self.images = FakeImages()
+            FakeOpenAI.last_instance = self
+
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+
+    renderer = GenerativeImageRenderer(api_key="test-key")
+    image_bytes, _usage = renderer._generate_image(
+        prompt="Use the template and update the data.",
+        options=ImageGenerationOptions(image_model="gpt-image-2"),
+        template_image=template_path,
+    )
+
+    assert image_bytes == b"image-bytes"
+    assert FakeOpenAI.last_instance is not None
+    edit_kwargs = FakeOpenAI.last_instance.images.edit_kwargs
+    assert edit_kwargs is not None
+    assert edit_kwargs["model"] == "gpt-image-2"
+    assert "input_fidelity" not in edit_kwargs
 
 
 def test_resolve_session_path_uses_standard_aech_session(monkeypatch, tmp_path) -> None:

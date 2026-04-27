@@ -285,7 +285,6 @@ class GenerativeImageRenderer:
                         with template_path.open("rb") as image_file:
                             response = client.images.edit(
                                 image=image_file,
-                                input_fidelity="high",
                                 timeout=max(1, int(options.image_timeout_seconds)),
                                 **common_kwargs,
                             )
