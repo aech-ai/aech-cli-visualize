@@ -21,7 +21,10 @@ from aech_cli_visualize.generative import (
     resolve_visualization_input,
 )
 from aech_cli_visualize.main import app
-from aech_cli_visualize.observability import resolve_session_path
+from aech_cli_visualize.observability import (
+    _missing_observability_dependency_message,
+    resolve_session_path,
+)
 
 
 def _analysis_dict() -> dict:
@@ -252,3 +255,23 @@ def test_resolve_session_path_prefers_llm_log_path(monkeypatch, tmp_path) -> Non
     monkeypatch.setenv("AECH_SESSION_ID", "ignored")
 
     assert resolve_session_path() == session_path
+
+
+def test_observability_error_names_missing_transitive_dependency() -> None:
+    error = ModuleNotFoundError("No module named 'opentelemetry.sdk'", name="opentelemetry.sdk")
+
+    message = _missing_observability_dependency_message(error)
+
+    assert "opentelemetry.sdk" in message
+    assert "aech_llm_observability package" not in message
+
+
+def test_observability_error_names_missing_runtime_package() -> None:
+    error = ModuleNotFoundError(
+        "No module named 'aech_llm_observability'",
+        name="aech_llm_observability",
+    )
+
+    message = _missing_observability_dependency_message(error)
+
+    assert "aech_llm_observability package" in message

@@ -11,6 +11,21 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 
+def _missing_observability_dependency_message(exc: ModuleNotFoundError) -> str:
+    missing_name = str(exc.name or "").strip()
+    if missing_name == "aech_llm_observability":
+        return (
+            "LLM observability requires the aech_llm_observability package from "
+            "aech-agent-runtime to be installed in the capability environment."
+        )
+    if missing_name:
+        return (
+            "LLM observability dependency import failed; missing "
+            f"{missing_name!r}. Rebuild or reinstall the capability environment."
+        )
+    return "LLM observability dependency import failed. Rebuild or reinstall the capability environment."
+
+
 def resolve_session_path() -> Path | None:
     """Resolve the Agent Aech runtime session path when this CLI runs in-session."""
     explicit = os.environ.get("AECH_SESSION_PATH")
@@ -37,11 +52,8 @@ def configure_llm_observability() -> Path | None:
 
     try:
         from aech_llm_observability import init_instrumentation, set_llm_log_path
-    except ImportError as exc:
-        raise RuntimeError(
-            "LLM observability requires the aech_llm_observability package from "
-            "aech-agent-runtime to be installed in the capability environment."
-        ) from exc
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(_missing_observability_dependency_message(exc)) from exc
 
     session_path.mkdir(parents=True, exist_ok=True)
     init_instrumentation(service_name="aech-cli-visualize")
@@ -66,11 +78,8 @@ def finalize_llm_observability(session_path: Path | None) -> None:
 
     try:
         from aech_llm_observability import generate_usage_summary
-    except ImportError as exc:
-        raise RuntimeError(
-            "LLM observability requires the aech_llm_observability package from "
-            "aech-agent-runtime to be installed in the capability environment."
-        ) from exc
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(_missing_observability_dependency_message(exc)) from exc
 
     generate_usage_summary(session_path)
 
@@ -82,11 +91,8 @@ def append_llm_log_entry(entry: dict[str, Any]) -> None:
 
     try:
         from aech_llm_observability import get_llm_log_path, get_llm_role
-    except ImportError as exc:
-        raise RuntimeError(
-            "LLM observability requires the aech_llm_observability package from "
-            "aech-agent-runtime to be installed in the capability environment."
-        ) from exc
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(_missing_observability_dependency_message(exc)) from exc
 
     log_path = get_llm_log_path()
     if log_path is None:
