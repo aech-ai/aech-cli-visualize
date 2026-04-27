@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
-import mimetypes
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -53,6 +53,8 @@ class ImageGenerationOptions:
     surface: SurfaceMode = "slide"
     include_header: bool = False
     max_data_chars: int = MAX_PROMPT_DATA_CHARS
+    image_timeout_seconds: int = 135
+    image_max_attempts: int = 2
     dry_run: bool = False
 
 
@@ -249,7 +251,7 @@ class GenerativeImageRenderer:
         options: ImageGenerationOptions,
         template_image: str | Path | None,
     ) -> tuple[bytes, dict[str, Any] | None]:
-        """Call GPT Image through the Responses image-generation tool."""
+        """Call GPT Image directly and return decoded image bytes."""
         if not self.api_key:
             raise RuntimeError("OPENAI_API_KEY is required for GPT Image generation.")
 
@@ -260,57 +262,71 @@ class GenerativeImageRenderer:
                 "The generative image backend requires the 'openai' package."
             ) from exc
 
-        content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
-        if template_image is not None:
-            template_path = Path(template_image)
-            if not template_path.exists():
-                raise FileNotFoundError(f"Template image not found: {template_path}")
-            media_type = mimetypes.guess_type(template_path.name)[0] or "image/png"
-            encoded = base64.b64encode(template_path.read_bytes()).decode("ascii")
-            content.append({
-                "type": "input_image",
-                "image_url": f"data:{media_type};base64,{encoded}",
-            })
-
-        tool: dict[str, Any] = {
-            "type": "image_generation",
+        common_kwargs: dict[str, Any] = {
             "model": options.image_model,
+            "prompt": prompt,
             "size": options.size,
             "quality": options.quality,
             "output_format": options.output_format,
-            "action": "edit" if template_image is not None else "generate",
         }
         if options.output_compression is not None:
-            tool["output_compression"] = options.output_compression
+            common_kwargs["output_compression"] = options.output_compression
 
-        client = OpenAI(api_key=self.api_key, timeout=900.0)
-        with observed_llm_role("executor"), timed_llm_call() as elapsed_ms:
-            try:
-                response = client.responses.create(
-                    model=options.response_model,
-                    input=[{"role": "user", "content": content}],
-                    tools=[tool],
-                    tool_choice={"type": "image_generation"},
-                )
-            except Exception as exc:
-                error_detail = _format_exception_chain(exc)
-                append_llm_log_entry({
-                    "model": options.image_model,
-                    "response_model": options.response_model,
-                    "operation": "chat",
-                    "tool_name": "image_generation",
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "reasoning_tokens": 0,
-                    "cache_read_tokens": 0,
-                    "cache_creation_tokens": 0,
-                    "duration_ms": elapsed_ms(),
-                    "status": "ERROR",
-                    "error": error_detail,
-                })
-                raise RuntimeError(f"Image generation failed: {error_detail}") from exc
+        max_attempts = max(1, int(options.image_max_attempts))
+        client = OpenAI(api_key=self.api_key, timeout=max(1, int(options.image_timeout_seconds)))
+        response: Any | None = None
+        for attempt in range(1, max_attempts + 1):
+            with observed_llm_role("executor"), timed_llm_call() as elapsed_ms:
+                try:
+                    if template_image is not None:
+                        template_path = Path(template_image)
+                        if not template_path.exists():
+                            raise FileNotFoundError(f"Template image not found: {template_path}")
+                        with template_path.open("rb") as image_file:
+                            response = client.images.edit(
+                                image=image_file,
+                                input_fidelity="high",
+                                timeout=max(1, int(options.image_timeout_seconds)),
+                                **common_kwargs,
+                            )
+                    else:
+                        response = client.images.generate(
+                            timeout=max(1, int(options.image_timeout_seconds)),
+                            **common_kwargs,
+                        )
+                    break
+                except Exception as exc:
+                    error_detail = _format_exception_chain(exc)
+                    retryable = _is_retryable_image_error(error_detail)
+                    will_retry = retryable and attempt < max_attempts
+                    append_llm_log_entry({
+                        "model": options.image_model,
+                        "response_model": None,
+                        "operation": "image_generation",
+                        "tool_name": "image_generation",
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "reasoning_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cache_creation_tokens": 0,
+                        "duration_ms": elapsed_ms(),
+                        "status": "ERROR",
+                        "error": error_detail,
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "will_retry": will_retry,
+                    })
+                    if not will_retry:
+                        raise RuntimeError(
+                            f"Image generation failed after {attempt}/{max_attempts} attempt(s): "
+                            f"{error_detail}"
+                        ) from exc
+            time.sleep(min(8.0, 1.5 * attempt))
 
-        image_base64 = _extract_response_image_result(response)
+        if response is None:
+            raise RuntimeError("Image generation failed before receiving a response.")
+
+        image_base64 = _extract_images_api_result(response)
         if not image_base64:
             raise RuntimeError("GPT Image response did not include base64 image data.")
 
@@ -318,8 +334,8 @@ class GenerativeImageRenderer:
         cost_usd = _estimate_gpt_image_2_cost_usd(options.image_model, usage)
         append_llm_log_entry({
             "model": options.image_model,
-            "response_model": options.response_model,
-            "operation": "chat",
+            "response_model": None,
+            "operation": "image_generation",
             "tool_name": "image_generation",
             "input_tokens": usage["input_tokens"],
             "output_tokens": usage["output_tokens"],
@@ -331,7 +347,7 @@ class GenerativeImageRenderer:
             "cost_usd": cost_usd if cost_usd is not None else 0.0,
             "request_messages": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
             "response_messages": [{
-                "type": "image_generation_call",
+                "type": "image_generation",
                 "response_id": getattr(response, "id", None),
             }],
         })
@@ -339,12 +355,15 @@ class GenerativeImageRenderer:
         return base64.b64decode(image_base64), usage
 
 
-def _extract_response_image_result(response: Any) -> str | None:
-    """Extract base64 image data from an OpenAI Responses image-generation call."""
-    for output in getattr(response, "output", []) or []:
-        if getattr(output, "type", None) == "image_generation_call":
-            result = getattr(output, "result", None)
-            return str(result) if result else None
+def _extract_images_api_result(response: Any) -> str | None:
+    """Extract base64 image data from an OpenAI Images API response."""
+    data = getattr(response, "data", None) or []
+    if not data:
+        return None
+    first = data[0]
+    result = getattr(first, "b64_json", None)
+    if result:
+        return str(result)
     return None
 
 
@@ -355,6 +374,38 @@ def _format_exception_chain(exc: BaseException) -> str:
         parts.append(f"{type(cause).__name__}: {cause}")
         cause = cause.__cause__
     return " | caused by ".join(parts)
+
+
+def _is_retryable_image_error(error_detail: str) -> bool:
+    retry_markers = (
+        "APIConnectionError",
+        "APITimeoutError",
+        "RemoteProtocolError",
+        "Connection error",
+        "Server disconnected",
+        "timeout",
+        "temporarily unavailable",
+        "rate limit",
+        "status_code: 408",
+        "status_code: 409",
+        "status_code: 429",
+        "status_code: 500",
+        "status_code: 502",
+        "status_code: 503",
+        "status_code: 504",
+    )
+    non_retry_markers = (
+        "invalid_request_error",
+        "model_not_found",
+        "status_code: 400",
+        "status_code: 401",
+        "status_code: 403",
+        "status_code: 404",
+    )
+    normalized = error_detail.lower()
+    if any(marker.lower() in normalized for marker in non_retry_markers):
+        return False
+    return any(marker.lower() in normalized for marker in retry_markers)
 
 
 def _normalize_openai_usage(usage: Any) -> dict[str, int]:

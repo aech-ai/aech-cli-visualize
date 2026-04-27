@@ -536,7 +536,7 @@ def image_command(
     ] = "gpt-image-2",
     response_model: Annotated[
         str,
-        typer.Option("--response-model", help="Responses API model that calls the image generation tool"),
+        typer.Option("--response-model", help="Deprecated compatibility option; image generation uses the Images API directly"),
     ] = "gpt-5.5",
     surface: Annotated[
         str,
@@ -566,6 +566,14 @@ def image_command(
         int,
         typer.Option("--max-data-chars", help="Maximum serialized data chars allowed in model prompts"),
     ] = 2_000,
+    image_timeout_seconds: Annotated[
+        int,
+        typer.Option("--image-timeout-seconds", help="Per-attempt timeout for GPT Image generation"),
+    ] = 135,
+    image_max_attempts: Annotated[
+        int,
+        typer.Option("--image-max-attempts", help="Maximum GPT Image generation attempts for transient transport errors"),
+    ] = 2,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run/--generate", help="Write prompt/analysis artifacts without calling GPT Image"),
@@ -611,6 +619,12 @@ def image_command(
         if output_compression is not None and format == "png":
             raise ValueError("output-compression is only supported for jpeg and webp outputs")
 
+        if image_timeout_seconds < 1:
+            raise ValueError("image-timeout-seconds must be at least 1")
+
+        if image_max_attempts < 1:
+            raise ValueError("image-max-attempts must be at least 1")
+
         raw_payload = parse_data_input(data_file)
         payload = resolve_visualization_input(
             raw_payload,
@@ -629,6 +643,8 @@ def image_command(
             surface=surface,  # type: ignore[arg-type]
             include_header=include_header,
             max_data_chars=max_data_chars,
+            image_timeout_seconds=image_timeout_seconds,
+            image_max_attempts=image_max_attempts,
             dry_run=dry_run,
         )
 
@@ -653,13 +669,16 @@ def image_command(
             "success": True,
             "output_files": output_files,
             "backend": "gpt-image",
+            "image_api": "images",
             "image_model": image_model,
-            "response_model": response_model,
+            "response_model": None,
             "analysis_model": analysis_model,
             "analysis_mode": analysis_mode,
             "surface": surface,
             "size": options.size,
             "include_header": include_header,
+            "image_timeout_seconds": image_timeout_seconds,
+            "image_max_attempts": image_max_attempts,
             "dry_run": dry_run,
             "used_template_image": result.used_template_image,
             "usage": result.usage,

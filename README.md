@@ -166,12 +166,14 @@ The `image` command writes the generated image plus prompt and analysis audit ar
     {"path": "./out/generative_visual.analysis.json", "format": "json", "size_bytes": 1800}
   ],
   "backend": "gpt-image",
+  "image_api": "images",
   "image_model": "gpt-image-2",
+  "response_model": null,
   "analysis_mode": "precomputed"
 }
 ```
 
-The generative path does not fall back to Plotly, Delight, or rule-based analysis. If `OPENAI_API_KEY` is missing and LLM analysis or image generation is required, the command fails with a structured JSON error.
+The generative path does not fall back to Plotly, Delight, or rule-based analysis. The final raster step calls the OpenAI Images API directly with `gpt-image-2`; `--template-image` uses image edit mode with the previous visual as a consistency reference. If `OPENAI_API_KEY` is missing and LLM analysis or image generation is required, the command fails with a structured JSON error.
 
 By default, the `image` command targets a PowerPoint-friendly landscape slide (`--surface slide`, `--size 2048x1152`, `--no-header`). For replacing a chart inside an app page, use `--surface embedded-card` and optionally pass a screenshot or existing chart frame with `--template-image` so GPT Image can preserve the page's visual rhythm while replacing the chart content with an analysis-rich image.
 

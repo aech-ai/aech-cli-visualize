@@ -9,7 +9,8 @@ from typer.testing import CliRunner
 
 from aech_cli_visualize.generative.image_renderer import (
     _estimate_gpt_image_2_cost_usd,
-    _extract_response_image_result,
+    _extract_images_api_result,
+    _is_retryable_image_error,
 )
 from aech_cli_visualize.generative import (
     VisualizationAnalysis,
@@ -166,11 +167,11 @@ def test_image_command_rejects_png_compression(tmp_path) -> None:
     assert "jpeg and webp" in output["error"]
 
 
-def test_extract_response_image_result() -> None:
-    output = type("Output", (), {"type": "image_generation_call", "result": "aW1hZ2U="})()
-    response = type("Response", (), {"output": [output]})()
+def test_extract_images_api_result() -> None:
+    image_data = type("ImageData", (), {"b64_json": "aW1hZ2U="})()
+    response = type("Response", (), {"data": [image_data]})()
 
-    assert _extract_response_image_result(response) == "aW1hZ2U="
+    assert _extract_images_api_result(response) == "aW1hZ2U="
 
 
 def test_estimate_gpt_image_2_cost_usd() -> None:
@@ -180,6 +181,16 @@ def test_estimate_gpt_image_2_cost_usd() -> None:
     )
 
     assert cost == 0.064625
+
+
+def test_retryable_image_error_classification() -> None:
+    assert _is_retryable_image_error(
+        "APIConnectionError: Connection error. | caused by RemoteProtocolError: Server disconnected"
+    )
+    assert _is_retryable_image_error("APITimeoutError: request timed out")
+    assert not _is_retryable_image_error(
+        "BadRequestError: Error code: 400 - {'error': {'code': 'model_not_found'}}"
+    )
 
 
 def test_resolve_session_path_uses_standard_aech_session(monkeypatch, tmp_path) -> None:
