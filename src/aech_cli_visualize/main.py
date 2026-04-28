@@ -566,7 +566,7 @@ def image_command(
     analysis_model: Annotated[
         str,
         typer.Option("--analysis-model", help="OpenAI model for typed data analysis"),
-    ] = "gpt-5.5",
+    ] = "gpt-5.4",
     image_model: Annotated[
         str,
         typer.Option("--image-model", help="GPT Image model for raster generation"),
@@ -574,7 +574,7 @@ def image_command(
     response_model: Annotated[
         str,
         typer.Option("--response-model", help="Deprecated compatibility option; image generation uses the Images API directly"),
-    ] = "gpt-5.5",
+    ] = "gpt-5.4",
     surface: Annotated[
         str,
         typer.Option("--surface", help="Target surface: slide or embedded-card"),

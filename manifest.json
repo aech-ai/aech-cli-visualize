@@ -55,7 +55,7 @@
           "name": "analysis-model",
           "type": "option",
           "required": false,
-          "description": "OpenAI model for typed data analysis. Default: gpt-5.5."
+          "description": "OpenAI model for typed data analysis. Default: gpt-5.4."
         },
         {
           "name": "image-model",

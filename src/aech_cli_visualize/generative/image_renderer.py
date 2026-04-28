@@ -43,8 +43,8 @@ class ImageGenerationOptions:
     """Generation settings for GPT Image."""
 
     image_model: str = "gpt-image-2"
-    response_model: str = "gpt-5.5"
-    analysis_model: str = "gpt-5.5"
+    response_model: str = "gpt-5.4"
+    analysis_model: str = "gpt-5.4"
     analysis_mode: AnalysisMode = "auto"
     size: str = "2048x1152"
     quality: ImageQuality = "medium"
