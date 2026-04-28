@@ -51,12 +51,14 @@ Useful options:
 - `--template-image`: use an existing screenshot or visual as a layout/style reference.
 - `--analysis-mode precomputed`: use when you already supplied a trusted `analysis` object.
 - `--analysis-mode code`: force generated-code analysis for larger structured payloads.
+- `--factual-validate`: enabled by default; rejects or regenerates images with unsupported visible facts.
 
 ## Working Rules
 
 - Do not assume visualize means charting. Numeric fields are optional.
 - For prose or arbitrary material, wrap it in JSON under `data.source_text`, `data.records`, or domain-specific keys and provide concrete `instructions`.
 - Keep only evidence the image should actually show. Use concise strings, short IDs, and high-signal fields.
+- Treat factual validation failures as blocking. Do not show a generated business image that failed validation.
 - Always inspect the generated image before showing it to the user.
 - Use `--dry-run` when you need to audit the prompt and analysis without spending an image call.
 - Do not use old deterministic commands such as `chart`, `kpi`, `table`, `gauge`, `dashboard`, or `iterate`; the supported path is `image`.
@@ -67,5 +69,6 @@ The command writes:
 - `<output-dir>/generative_visual.<format>`
 - `<output-dir>/generative_visual.prompt.txt`
 - `<output-dir>/generative_visual.analysis.json`
+- `<output-dir>/generative_visual.factual_validation.json` when generation runs with factual validation
 
 For `--analysis-mode code`, it may also write generated-code audit artifacts beside the image.

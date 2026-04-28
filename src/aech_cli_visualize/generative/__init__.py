@@ -8,6 +8,8 @@ from .image_renderer import (
 )
 from .models import (
     DataInsight,
+    FactualValidationIssue,
+    FactualValidationResult,
     KeyMetric,
     VisualElement,
     VisualizationAnalysis,
@@ -17,6 +19,8 @@ from .prompting import build_image_prompt
 
 __all__ = [
     "DataInsight",
+    "FactualValidationIssue",
+    "FactualValidationResult",
     "GenerativeImageRenderResult",
     "GenerativeImageRenderer",
     "ImageGenerationOptions",

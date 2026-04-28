@@ -16,7 +16,8 @@ from pydantic_ai import Agent
 from ..model_utils import build_pydantic_ai_model, get_model_settings
 from ..observability import append_llm_log_entry, observed_llm_role, timed_llm_call
 from .code_analysis import analyze_with_generated_code
-from .models import VisualizationAnalysis, VisualizationPayload
+from .factual_validator import FactualImageValidator
+from .models import FactualValidationResult, VisualizationAnalysis, VisualizationPayload
 from .prompting import MAX_PROMPT_DATA_CHARS, build_image_prompt
 
 
@@ -55,6 +56,9 @@ class ImageGenerationOptions:
     max_data_chars: int = MAX_PROMPT_DATA_CHARS
     image_timeout_seconds: int = 135
     image_max_attempts: int = 2
+    factual_validation: bool = True
+    factual_validation_model: str | None = None
+    factual_validation_max_attempts: int = 2
     dry_run: bool = False
 
 
@@ -69,6 +73,9 @@ class GenerativeImageRenderResult:
     prompt: str
     usage: dict[str, Any] | None
     used_template_image: bool
+    validation_path: Path | None = None
+    factual_validation: FactualValidationResult | None = None
+    validation_attempts: int = 0
 
 
 def resolve_visualization_input(
@@ -138,8 +145,8 @@ class GenerativeImageRenderer:
 
         prompt_path = output_directory / f"{filename}.prompt.txt"
         analysis_path = output_directory / f"{filename}.analysis.json"
-        prompt_path.write_text(prompt)
-        analysis_path.write_text(json.dumps(analysis.model_dump(), indent=2))
+        prompt_path.write_text(prompt, encoding="utf-8")
+        analysis_path.write_text(json.dumps(analysis.model_dump(), indent=2), encoding="utf-8")
 
         if options.dry_run:
             return GenerativeImageRenderResult(
@@ -150,16 +157,61 @@ class GenerativeImageRenderer:
                 prompt=prompt,
                 usage=None,
                 used_template_image=template_image is not None,
+                validation_path=None,
+                factual_validation=None,
+                validation_attempts=0,
             )
 
-        image_bytes, usage = self._generate_image(
-            prompt=prompt,
-            options=options,
-            template_image=template_image,
+        output_path = output_directory / f"{filename}.{options.output_format}"
+        validation_path = output_directory / f"{filename}.factual_validation.json"
+        usage: dict[str, Any] | None = None
+        final_validation: FactualValidationResult | None = None
+        validation_attempts = 0
+        generation_prompt = prompt
+        max_validation_attempts = (
+            max(1, int(options.factual_validation_max_attempts))
+            if options.factual_validation
+            else 1
         )
 
-        output_path = output_directory / f"{filename}.{options.output_format}"
-        output_path.write_bytes(image_bytes)
+        for generation_attempt in range(1, max_validation_attempts + 1):
+            prompt_path.write_text(generation_prompt, encoding="utf-8")
+            image_bytes, usage = self._generate_image(
+                prompt=generation_prompt,
+                options=options,
+                template_image=template_image,
+            )
+            output_path.write_bytes(image_bytes)
+
+            if not options.factual_validation:
+                break
+
+            final_validation = self._validate_generated_image(
+                image_path=output_path,
+                payload=payload,
+                analysis=analysis,
+                prompt_data=prompt_data,
+                options=options,
+            )
+            validation_attempts = generation_attempt
+            validation_path.write_text(
+                json.dumps(final_validation.model_dump(), indent=2),
+                encoding="utf-8",
+            )
+            if final_validation.is_acceptable:
+                break
+
+            if generation_attempt >= max_validation_attempts:
+                raise RuntimeError(
+                    "Generated image failed factual validation after "
+                    f"{generation_attempt}/{max_validation_attempts} attempt(s): "
+                    f"{final_validation.summary}"
+                )
+
+            generation_prompt = self._build_regeneration_prompt(
+                base_prompt=prompt,
+                validation=final_validation,
+            )
 
         return GenerativeImageRenderResult(
             output_path=output_path,
@@ -169,7 +221,60 @@ class GenerativeImageRenderer:
             prompt=prompt,
             usage=usage,
             used_template_image=template_image is not None,
+            validation_path=validation_path if options.factual_validation else None,
+            factual_validation=final_validation,
+            validation_attempts=validation_attempts,
         )
+
+    def _validate_generated_image(
+        self,
+        *,
+        image_path: Path,
+        payload: VisualizationPayload,
+        analysis: VisualizationAnalysis,
+        prompt_data: dict[str, Any],
+        options: ImageGenerationOptions,
+    ) -> FactualValidationResult:
+        """Use a vision-capable analysis model to reject fabricated image content."""
+        if not self.api_key:
+            raise RuntimeError("OPENAI_API_KEY is required for factual image validation.")
+
+        validator = FactualImageValidator(
+            model=options.factual_validation_model or options.analysis_model,
+            api_key=self.api_key,
+        )
+        return validator.evaluate(
+            image_path=image_path,
+            analysis=analysis,
+            prompt_data=prompt_data,
+            title=payload.title,
+            instructions=payload.instructions,
+            max_data_chars=options.max_data_chars,
+        )
+
+    def _build_regeneration_prompt(
+        self,
+        *,
+        base_prompt: str,
+        validation: FactualValidationResult,
+    ) -> str:
+        issues = [
+            f"- [{issue.severity}] {issue.kind}: {issue.description} Evidence: {issue.evidence}"
+            for issue in validation.issues
+        ]
+        return "\n".join([
+            base_prompt,
+            "",
+            "Previous generated image failed factual validation.",
+            validation.summary,
+            "Correct these factual issues without adding new visible data:",
+            "\n".join(issues) if issues else "- Unspecified factual mismatch.",
+            "",
+            "Correction instructions:",
+            validation.correction_instructions,
+            "",
+            "Regenerate the image using only the allowed values and visual elements above.",
+        ])
 
     def _resolve_analysis(
         self,

@@ -67,3 +67,34 @@ class VisualizationPayload(BaseModel):
     title: str | None = None
     instructions: str | None = None
     analysis: VisualizationAnalysis | None = None
+
+
+class FactualValidationIssue(BaseModel):
+    """A visible image element that is not grounded in the supplied evidence."""
+
+    kind: Literal[
+        "fabricated_value",
+        "unsupported_chart",
+        "unsupported_label",
+        "missing_required_value",
+        "unreadable_value",
+        "other",
+    ]
+    description: str = Field(..., min_length=1)
+    evidence: str = Field(..., min_length=1)
+    severity: Literal["critical", "major", "minor"] = "major"
+
+
+class FactualValidationResult(BaseModel):
+    """Post-generation factual QA result for a generated visualization image."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_acceptable: bool
+    summary: str = Field(..., min_length=1)
+    issues: list[FactualValidationIssue] = Field(default_factory=list)
+    correction_instructions: str = Field(
+        ...,
+        min_length=1,
+        description="Specific corrective instruction to feed back into image regeneration.",
+    )

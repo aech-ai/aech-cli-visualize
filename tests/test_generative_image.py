@@ -16,6 +16,7 @@ from aech_cli_visualize.generative.image_renderer import (
     _is_retryable_image_error,
 )
 from aech_cli_visualize.generative import (
+    FactualValidationResult,
     VisualizationAnalysis,
     build_image_prompt,
     resolve_visualization_input,
@@ -222,13 +223,144 @@ def test_auto_analysis_uses_generated_code_for_large_payload(monkeypatch, tmp_pa
         payload=payload,
         output_dir=tmp_path,
         filename="large",
-        options=ImageGenerationOptions(analysis_mode="auto", max_data_chars=80),
+        options=ImageGenerationOptions(
+            analysis_mode="auto",
+            max_data_chars=80,
+            factual_validation=False,
+        ),
     )
 
     assert calls
     assert calls[0]["data"] == payload.data
     assert result.output_path == tmp_path / "large.png"
     assert "Rows" in result.prompt
+
+
+def test_image_render_runs_factual_validation_after_generation(monkeypatch, tmp_path) -> None:
+    payload = resolve_visualization_input({
+        "title": "Agent spend",
+        "data": {"date": ["Mon", "Tue"], "spend_usd": [420, 1240]},
+        "analysis": _analysis_dict(),
+    })
+    validations = []
+
+    def fake_generate_image(self, *, prompt, options, template_image=None):
+        return b"image", {"input_tokens": 1, "output_tokens": 1}
+
+    def fake_validate(self, **kwargs):
+        validations.append(kwargs)
+        return FactualValidationResult(
+            is_acceptable=True,
+            summary="All visible facts are grounded.",
+            issues=[],
+            correction_instructions="No correction needed.",
+        )
+
+    monkeypatch.setattr(GenerativeImageRenderer, "_generate_image", fake_generate_image)
+    monkeypatch.setattr(GenerativeImageRenderer, "_validate_generated_image", fake_validate)
+
+    renderer = GenerativeImageRenderer(api_key="test-key")
+    result = renderer.render(
+        payload=payload,
+        output_dir=tmp_path,
+        filename="validated",
+        options=ImageGenerationOptions(analysis_mode="precomputed"),
+    )
+
+    assert validations
+    assert validations[0]["image_path"] == tmp_path / "validated.png"
+    assert validations[0]["prompt_data"] == payload.data
+    assert result.factual_validation is not None
+    assert result.factual_validation.is_acceptable is True
+    assert result.validation_path == tmp_path / "validated.factual_validation.json"
+    assert json.loads(result.validation_path.read_text())["is_acceptable"] is True
+
+
+def test_image_render_regenerates_then_fails_loudly_on_factual_rejection(monkeypatch, tmp_path) -> None:
+    payload = resolve_visualization_input({
+        "title": "Agent spend",
+        "data": {"date": ["Mon", "Tue"], "spend_usd": [420, 1240]},
+        "analysis": _analysis_dict(),
+    })
+    generated_prompts = []
+
+    def fake_generate_image(self, *, prompt, options, template_image=None):
+        generated_prompts.append(prompt)
+        return b"image", {"input_tokens": 1, "output_tokens": 1}
+
+    def fake_validate(self, **_kwargs):
+        return FactualValidationResult(
+            is_acceptable=False,
+            summary="Image added an unsupported chart.",
+            issues=[
+                {
+                    "kind": "unsupported_chart",
+                    "description": "A second chart appears but only one chart was requested.",
+                    "evidence": "Recommended visuals contain one line chart.",
+                    "severity": "major",
+                }
+            ],
+            correction_instructions="Remove the unsupported second chart.",
+        )
+
+    monkeypatch.setattr(GenerativeImageRenderer, "_generate_image", fake_generate_image)
+    monkeypatch.setattr(GenerativeImageRenderer, "_validate_generated_image", fake_validate)
+
+    renderer = GenerativeImageRenderer(api_key="test-key")
+
+    try:
+        renderer.render(
+            payload=payload,
+            output_dir=tmp_path,
+            filename="rejected",
+            options=ImageGenerationOptions(
+                analysis_mode="precomputed",
+                factual_validation_max_attempts=2,
+            ),
+        )
+    except RuntimeError as exc:
+        assert "failed factual validation" in str(exc)
+    else:
+        raise AssertionError("Expected factual validation failure")
+
+    assert len(generated_prompts) == 2
+    assert "Previous generated image failed factual validation" in generated_prompts[1]
+    assert "unsupported second chart" in generated_prompts[1]
+    assert "Previous generated image failed factual validation" in (
+        tmp_path / "rejected.prompt.txt"
+    ).read_text()
+
+
+def test_image_render_can_disable_factual_validation(monkeypatch, tmp_path) -> None:
+    payload = resolve_visualization_input({
+        "title": "Agent spend",
+        "data": {"date": ["Mon"], "spend_usd": [420]},
+        "analysis": _analysis_dict(),
+    })
+
+    def fake_generate_image(self, *, prompt, options, template_image=None):
+        return b"image", {"input_tokens": 1, "output_tokens": 1}
+
+    def fail_validate(self, **_kwargs):
+        raise AssertionError("Validation should not run when disabled")
+
+    monkeypatch.setattr(GenerativeImageRenderer, "_generate_image", fake_generate_image)
+    monkeypatch.setattr(GenerativeImageRenderer, "_validate_generated_image", fail_validate)
+
+    renderer = GenerativeImageRenderer(api_key="test-key")
+    result = renderer.render(
+        payload=payload,
+        output_dir=tmp_path,
+        filename="unvalidated",
+        options=ImageGenerationOptions(
+            analysis_mode="precomputed",
+            factual_validation=False,
+        ),
+    )
+
+    assert result.output_path == tmp_path / "unvalidated.png"
+    assert result.validation_path is None
+    assert result.validation_attempts == 0
 
 
 def test_parse_data_input_accepts_jsonl_records(tmp_path) -> None:

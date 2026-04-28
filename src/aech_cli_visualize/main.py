@@ -611,6 +611,18 @@ def image_command(
         int,
         typer.Option("--image-max-attempts", help="Maximum GPT Image generation attempts for transient transport errors"),
     ] = 2,
+    factual_validate: Annotated[
+        bool,
+        typer.Option("--factual-validate/--no-factual-validate", help="Validate the generated image against the analysis/data evidence"),
+    ] = True,
+    factual_validation_model: Annotated[
+        Optional[str],
+        typer.Option("--factual-validation-model", help="Vision-capable model for post-generation factual validation; defaults to analysis model"),
+    ] = None,
+    factual_validation_max_attempts: Annotated[
+        int,
+        typer.Option("--factual-validation-max-attempts", help="Maximum generate/validate attempts before failing"),
+    ] = 2,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run/--generate", help="Write prompt/analysis artifacts without calling GPT Image"),
@@ -665,6 +677,9 @@ def image_command(
         if image_max_attempts < 1:
             raise ValueError("image-max-attempts must be at least 1")
 
+        if factual_validation_max_attempts < 1:
+            raise ValueError("factual-validation-max-attempts must be at least 1")
+
         raw_payload = parse_data_input(data_file)
         payload = resolve_visualization_input(
             raw_payload,
@@ -685,6 +700,9 @@ def image_command(
             max_data_chars=max_data_chars,
             image_timeout_seconds=image_timeout_seconds,
             image_max_attempts=image_max_attempts,
+            factual_validation=factual_validate,
+            factual_validation_model=factual_validation_model,
+            factual_validation_max_attempts=factual_validation_max_attempts,
             dry_run=dry_run,
         )
 
@@ -702,6 +720,8 @@ def image_command(
             get_file_info(result.prompt_path),
             get_file_info(result.analysis_path),
         ]
+        if result.validation_path is not None:
+            output_files.append(get_file_info(result.validation_path))
         if result.output_path is not None:
             output_files.insert(0, get_file_info(result.output_path))
 
@@ -719,6 +739,10 @@ def image_command(
             "include_header": include_header,
             "image_timeout_seconds": image_timeout_seconds,
             "image_max_attempts": image_max_attempts,
+            "factual_validation": factual_validate,
+            "factual_validation_model": factual_validation_model or analysis_model,
+            "factual_validation_max_attempts": factual_validation_max_attempts,
+            "validation_attempts": result.validation_attempts,
             "dry_run": dry_run,
             "used_template_image": result.used_template_image,
             "usage": result.usage,

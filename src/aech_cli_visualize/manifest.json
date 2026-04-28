@@ -88,6 +88,24 @@
           "description": "Output format. Values: png, jpeg, webp. Default: png."
         },
         {
+          "name": "factual-validate",
+          "type": "option",
+          "required": false,
+          "description": "Validate generated image facts against the analysis and condensed evidence. Default: true. Use --factual-validate or --no-factual-validate."
+        },
+        {
+          "name": "factual-validation-model",
+          "type": "option",
+          "required": false,
+          "description": "Vision-capable model for post-generation factual validation. Defaults to the analysis model."
+        },
+        {
+          "name": "factual-validation-max-attempts",
+          "type": "option",
+          "required": false,
+          "description": "Maximum generate/validate attempts before failing loudly. Default: 2."
+        },
+        {
           "name": "dry-run",
           "type": "option",
           "required": false,
@@ -110,11 +128,16 @@
       "analysis_artifact": {
         "path": "<output-dir>/<filename>.analysis.json",
         "description": "Typed analysis audit artifact"
+      },
+      "factual_validation_artifact": {
+        "path": "<output-dir>/<filename>.factual_validation.json",
+        "description": "Post-generation visual fact-check artifact"
       }
     },
     "notes": [
       "Use the image action for all visualization generation.",
       "Visualize is not limited to charts, dashboards, or numeric data. Any agent-understood source material can be turned into an explanatory image when it is supplied as JSON/JSONL or wrapped text.",
+      "Generated images are fact-checked by default against the typed analysis and condensed evidence JSON; unsupported visible facts cause regeneration and then a hard failure if still unresolved.",
       "Deterministic chart, KPI, table, gauge, dashboard, and iterate renderers are no longer supported.",
       "The generative path does not fall back to Plotly, Delight, or rule-based rendering."
     ]
