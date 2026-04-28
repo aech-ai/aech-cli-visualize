@@ -3,17 +3,17 @@
   "name": "visualize",
   "type": "cli",
   "command": "aech-cli-visualize",
-  "description": "Generate analysis-rich visualization images with GPT Image. Input: raw JSON data or wrapped payloads with data, instructions, and optional typed analysis. Output: raster image plus prompt and analysis audit artifacts.",
+  "description": "Generate arbitrary visual artifacts with GPT Image from structured data, JSONL records, narrative text, or wrapped payloads. Use for anything the agent can make visual: dashboards, diagrams, timelines, maps, process flows, comparisons, annotations, and other image-based explanations. Output: raster image plus prompt and analysis audit artifacts.",
   "actions": [
     {
       "name": "image",
-      "description": "Generate an analysis-rich visualization image using GPT Image. Input: raw JSON data or wrapped payload with data, instructions, and optional typed analysis. Output: raster image plus prompt and analysis audit artifacts. Use when user wants analysis and visualization integrated in a polished image.",
+      "description": "Generate an arbitrary visualization image using GPT Image. Input can be structured data, JSONL records, narrative text wrapped in JSON, or a payload with data, instructions, and optional typed analysis. Use when any concept, process, status, record set, or story would be clearer as a polished image; numeric data is optional.",
       "parameters": [
         {
           "name": "data_file",
           "type": "argument",
           "required": false,
-          "description": "Path to JSON payload/data file. If omitted, reads from stdin."
+          "description": "Path to JSON/JSONL payload or data file. If omitted, reads from stdin. For prose or arbitrary source material, wrap it in JSON under data/source_text with instructions."
         },
         {
           "name": "output-dir",
@@ -31,7 +31,7 @@
           "name": "instructions",
           "type": "option",
           "required": false,
-          "description": "Analysis and visualization instructions for the model."
+          "description": "Analysis and visualization instructions for the model. State the desired visual form when the input is not numeric data."
         },
         {
           "name": "template-image",
@@ -101,7 +101,7 @@
     "outputs": {
       "visualization_image": {
         "path": "<output-dir>/<filename>.<format>",
-        "description": "Generated analytical visualization image"
+        "description": "Generated visual artifact"
       },
       "prompt_artifact": {
         "path": "<output-dir>/<filename>.prompt.txt",
@@ -114,6 +114,7 @@
     },
     "notes": [
       "Use the image action for all visualization generation.",
+      "Visualize is not limited to charts, dashboards, or numeric data. Any agent-understood source material can be turned into an explanatory image when it is supplied as JSON/JSONL or wrapped text.",
       "Deterministic chart, KPI, table, gauge, dashboard, and iterate renderers are no longer supported.",
       "The generative path does not fall back to Plotly, Delight, or rule-based rendering."
     ]

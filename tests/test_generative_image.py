@@ -159,6 +159,24 @@ def test_image_help_shows_larger_default_data_limit() -> None:
 
     assert result.exit_code == 0
     assert "[default: 20000]" in result.output
+    assert "arbitrary visualization image" in result.output
+
+
+def test_root_help_describes_arbitrary_visual_artifacts() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "arbitrary visual artifacts" in result.output
+
+
+def test_manifest_says_numeric_data_is_optional() -> None:
+    manifest = json.loads(Path("src/aech_cli_visualize/manifest.json").read_text())
+
+    assert "anything the agent can make visual" in manifest["description"]
+    assert "numeric data is optional" in manifest["actions"][0]["description"]
+    assert any("not limited to charts" in note for note in manifest["documentation"]["notes"])
 
 
 def test_auto_analysis_uses_generated_code_for_large_payload(monkeypatch, tmp_path) -> None:

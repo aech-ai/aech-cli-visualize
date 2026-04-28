@@ -1,3 +1,3 @@
-"""aech-cli-visualize: Generate analysis-rich visualization images."""
+"""aech-cli-visualize: Generate arbitrary visual artifacts with GPT Image."""
 
 __version__ = "0.1.4"

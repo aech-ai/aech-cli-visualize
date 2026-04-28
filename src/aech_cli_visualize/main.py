@@ -19,7 +19,7 @@ from .widgets.kpi import KPIWidget
 from .widgets.table import TableWidget
 
 app = typer.Typer(
-    help="Generate analysis-rich visualization images with GPT Image.",
+    help="Generate arbitrary visual artifacts with GPT Image from data, records, text, or instructions.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -616,12 +616,15 @@ def image_command(
         typer.Option("--dry-run/--generate", help="Write prompt/analysis artifacts without calling GPT Image"),
     ] = False,
 ) -> None:
-    """Generate an analysis-rich data visualization image with GPT Image.
+    """Generate an arbitrary visualization image with GPT Image.
 
-    Input can be either raw JSON data or a payload:
+    Input can be raw JSON, JSONL records, narrative source material wrapped in
+    JSON, or a payload:
     {"data": {...}, "title": "...", "instructions": "...", "analysis": {...}}.
-    If analysis is omitted, an OpenAI typed-output analysis call is made before
-    image generation. No deterministic chart fallback is used.
+    Numeric data is optional: use this for diagrams, timelines, annotated
+    summaries, process maps, comparisons, dashboards, and any other visual
+    explanation. If analysis is omitted, an OpenAI typed-output analysis call is
+    made before image generation. No deterministic chart fallback is used.
     """
     try:
         from .generative import (
