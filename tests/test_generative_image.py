@@ -87,9 +87,51 @@ def test_build_image_prompt_includes_data_analysis_and_constraints() -> None:
     assert "Spend anomaly detected" in prompt
     assert "Wednesday spike" in prompt
     assert '"spend_usd"' in prompt
-    assert "Use only these values; do not infer new numbers" in prompt
+    assert "Use only these values for the requested visuals; do not infer new numbers" in prompt
+    assert "Condensed evidence is grounding material for the listed visuals" in prompt
     assert "Quiet in-app analytical card" in prompt
     assert "No large header band" in prompt
+
+
+def test_build_image_prompt_blocks_extra_kpi_rollups_from_evidence() -> None:
+    analysis = VisualizationAnalysis.model_validate({
+        "headline": "Pipeline follow-up priorities",
+        "narrative": "Show account-level follow-up status without adding summary totals.",
+        "key_metrics": [],
+        "insights": [],
+        "recommended_visuals": [
+            {
+                "kind": "table",
+                "title": "Follow-up queue",
+                "fields": ["account", "next_step"],
+                "purpose": "List the accounts that need sales follow-up.",
+            }
+        ],
+        "layout_guidance": "Use a compact table only; no KPI strip.",
+        "warnings": [],
+    })
+
+    prompt = build_image_prompt(
+        data={
+            "rows": [
+                {"account": "Alpha", "next_step": "Renewal", "amount": "CAD 94,500"},
+                {"account": "Beta", "next_step": "Expansion", "amount": "USD 34,000"},
+            ]
+        },
+        analysis=analysis,
+        title="Sales follow-up",
+        instructions="Show follow-up priorities.",
+        output_format="png",
+        surface="embedded-card",
+        include_header=False,
+    )
+
+    assert "Visible metrics:\n- None specified" in prompt
+    assert "Do not add extra KPI strips" in prompt
+    assert "summary totals, currency rollups" in prompt
+    assert "omit it even when it appears in evidence" in prompt
+    assert '"amount":"CAD 94,500"' in prompt
+    assert '"amount":"USD 34,000"' in prompt
 
 
 def test_build_image_prompt_treats_template_as_composition_contract() -> None:

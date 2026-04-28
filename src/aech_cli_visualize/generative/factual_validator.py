@@ -24,6 +24,8 @@ analysis and condensed evidence JSON.
 Fail the image when:
 - It contains a visible number, category, label, or conclusion not present in the evidence.
 - It adds a chart, table, or visual section that is not requested by the analysis.
+- It surfaces a raw evidence value in a KPI, summary, or rollup that was not
+  selected by the analysis, even if that value exists in the evidence JSON.
 - It omits a required headline metric or makes a required value unreadable.
 - It changes signs, units, dates, ordering, rankings, or comparisons.
 

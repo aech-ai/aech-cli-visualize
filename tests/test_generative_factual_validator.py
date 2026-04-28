@@ -68,6 +68,7 @@ def test_factual_validator_sends_image_and_allowed_evidence(monkeypatch, tmp_pat
 
     assert result.is_acceptable is True
     assert captured["agent_kwargs"]["output_type"] is FactualValidationResult
+    assert "surfaces a raw evidence value in a KPI" in captured["agent_kwargs"]["instructions"]
     prompt, image = captured["content"]
     assert "Allowed typed analysis JSON" in prompt
     assert '"spend_usd":[420,1240]' in prompt
