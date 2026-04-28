@@ -25,6 +25,7 @@ from aech_cli_visualize.observability import (
     _missing_observability_dependency_message,
     resolve_session_path,
 )
+from aech_cli_visualize.utils.data import parse_data_input
 
 
 def _analysis_dict() -> dict:
@@ -200,6 +201,20 @@ def test_auto_analysis_uses_generated_code_for_large_payload(monkeypatch, tmp_pa
     assert calls[0]["data"] == payload.data
     assert result.output_path == tmp_path / "large.png"
     assert "Rows" in result.prompt
+
+
+def test_parse_data_input_accepts_jsonl_records(tmp_path) -> None:
+    input_path = tmp_path / "opportunities.jsonl"
+    input_path.write_text('{"id":"opp-1","stage":"discovery"}\n{"id":"opp-2","stage":"proposal"}\n')
+
+    data = parse_data_input(str(input_path))
+
+    assert data == {
+        "rows": [
+            {"id": "opp-1", "stage": "discovery"},
+            {"id": "opp-2", "stage": "proposal"},
+        ]
+    }
 
 
 def test_deterministic_renderer_commands_are_unsupported() -> None:
