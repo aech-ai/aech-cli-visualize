@@ -18,7 +18,7 @@ from .widgets.kpi import KPIWidget
 from .widgets.table import TableWidget
 
 app = typer.Typer(
-    help="Render charts, KPIs, tables, and dashboards to presentation-ready images.",
+    help="Generate analysis-rich visualization images with GPT Image.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -38,7 +38,19 @@ def get_file_info(path: Path) -> dict:
     }
 
 
-@app.command("chart")
+def unsupported_deterministic_renderer(command: str) -> None:
+    output_json({
+        "success": False,
+        "error": (
+            f"The '{command}' renderer is no longer supported. "
+            "Use 'aech-cli-visualize image' for all visualization generation."
+        ),
+        "replacement": "image",
+    })
+    raise typer.Exit(1)
+
+
+@app.command("chart", hidden=True)
 def chart_command(
     chart_type: Annotated[str, typer.Argument(help="Chart type: bar, line, pie, scatter, area, heatmap")],
     data_file: Annotated[Optional[str], typer.Argument(help="Path to JSON data file (reads stdin if omitted)")] = None,
@@ -61,6 +73,7 @@ def chart_command(
     Input: JSON with x/y values or series data.
     Output: chart image at <output-dir>/chart.<format>.
     """
+    unsupported_deterministic_renderer("chart")
     try:
         # Parse input data
         data = parse_data_input(data_file)
@@ -133,7 +146,7 @@ def chart_command(
         raise typer.Exit(1)
 
 
-@app.command("kpi")
+@app.command("kpi", hidden=True)
 def kpi_command(
     value: Annotated[str, typer.Option("--value", help="Metric value to display")],
     label: Annotated[str, typer.Option("--label", help="Label describing the metric")],
@@ -149,6 +162,7 @@ def kpi_command(
     Input: value and label via options.
     Output: KPI card image at <output-dir>/kpi.<format>.
     """
+    unsupported_deterministic_renderer("kpi")
     try:
         # Try to convert value to number
         try:
@@ -187,7 +201,7 @@ def kpi_command(
         raise typer.Exit(1)
 
 
-@app.command("table")
+@app.command("table", hidden=True)
 def table_command(
     data_file: Annotated[Optional[str], typer.Argument(help="Path to JSON file (reads stdin if omitted)")] = None,
     output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output image")] = ".",
@@ -200,6 +214,7 @@ def table_command(
     Input: JSON with headers and rows.
     Output: table image at <output-dir>/table.<format>.
     """
+    unsupported_deterministic_renderer("table")
     try:
         data = parse_data_input(data_file)
 
@@ -240,7 +255,7 @@ def table_command(
         raise typer.Exit(1)
 
 
-@app.command("gauge")
+@app.command("gauge", hidden=True)
 def gauge_command(
     value: Annotated[float, typer.Option("--value", help="Current value to display")],
     output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output image")] = ".",
@@ -257,6 +272,7 @@ def gauge_command(
     Input: value and range via options.
     Output: gauge image at <output-dir>/gauge.<format>.
     """
+    unsupported_deterministic_renderer("gauge")
     try:
         # Parse thresholds if provided
         threshold_list = None
@@ -293,7 +309,7 @@ def gauge_command(
         raise typer.Exit(1)
 
 
-@app.command("dashboard")
+@app.command("dashboard", hidden=True)
 def dashboard_command(
     spec_file: Annotated[Optional[str], typer.Argument(help="Path to dashboard spec JSON (reads stdin if omitted)")] = None,
     output_dir: Annotated[str, typer.Option("--output-dir", help="Directory for output image")] = ".",
@@ -321,6 +337,7 @@ def dashboard_command(
     Use --vlm-validate to enable VLM-based validation that checks the rendered
     output for visual issues and automatically applies corrections.
     """
+    unsupported_deterministic_renderer("dashboard")
     try:
         spec = parse_data_input(spec_file)
         width, height = parse_resolution(resolution)
@@ -467,7 +484,7 @@ def dashboard_command(
         raise typer.Exit(1)
 
 
-@app.command("analyze")
+@app.command("analyze", hidden=True)
 def analyze_command(
     data_file: Annotated[Optional[str], typer.Argument(help="Path to JSON data file (reads stdin if omitted)")] = None,
     questions: Annotated[bool, typer.Option("--questions/--no-questions", help="Include clarifying questions")] = True,
@@ -699,7 +716,7 @@ def image_command(
 
 # Config subcommand group
 config_app = typer.Typer(help="Manage saved dashboard configurations.")
-app.add_typer(config_app, name="config")
+app.add_typer(config_app, name="config", hidden=True)
 
 
 @config_app.command("save")
@@ -895,7 +912,7 @@ def config_delete_command(
         raise typer.Exit(1)
 
 
-@app.command("iterate")
+@app.command("iterate", hidden=True)
 def iterate_command(
     spec_file: Annotated[Optional[str], typer.Argument(help="Path to spec JSON (reads stdin if omitted)")] = None,
     feedback: Annotated[str, typer.Option("--feedback", "-f", help="User feedback to apply")] = "",
@@ -923,6 +940,7 @@ def iterate_command(
     Example:
         aech-cli-visualize iterate spec.json --feedback "fonts too small, too crowded"
     """
+    unsupported_deterministic_renderer("iterate")
     try:
         from .iterate import SpecModifier
         from .dashboard.composer import DashboardComposer

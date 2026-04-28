@@ -142,6 +142,29 @@ def test_image_command_dry_run_with_precomputed_analysis(tmp_path) -> None:
     assert (tmp_path / "generative_visual.analysis.json").exists()
 
 
+def test_deterministic_renderer_commands_are_unsupported() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["chart", "bar"])
+
+    assert result.exit_code == 1
+    output = json.loads(result.output)
+    assert output["success"] is False
+    assert output["replacement"] == "image"
+    assert "no longer supported" in output["error"]
+
+
+def test_cli_help_only_advertises_generative_image_command() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "image" in result.output
+    assert "chart" not in result.output
+    assert "dashboard" not in result.output
+
+
 def test_image_command_rejects_png_compression(tmp_path) -> None:
     input_path = tmp_path / "payload.json"
     input_path.write_text(json.dumps({
