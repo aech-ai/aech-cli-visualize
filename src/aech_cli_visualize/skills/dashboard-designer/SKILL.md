@@ -61,7 +61,7 @@ Useful options:
 - Treat factual validation failures as blocking. Do not show a generated business image that failed validation.
 - Always inspect the generated image before showing it to the user.
 - Use `--dry-run` when you need to audit the prompt and analysis without spending an image call.
-- Do not use old deterministic commands such as `chart`, `kpi`, `table`, `gauge`, `dashboard`, or `iterate`; the supported path is `image`.
+- The CLI exposes only `image`; there are no deterministic renderer commands or compatibility stubs.
 
 ## Output
 

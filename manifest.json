@@ -138,8 +138,8 @@
       "Use the image action for all visualization generation.",
       "Visualize is not limited to charts, dashboards, or numeric data. Any agent-understood source material can be turned into an explanatory image when it is supplied as JSON/JSONL or wrapped text.",
       "Generated images are fact-checked by default against the typed analysis and condensed evidence JSON; unsupported visible facts cause regeneration and then a hard failure if still unresolved.",
-      "Deterministic chart, KPI, table, gauge, dashboard, and iterate renderers are no longer supported.",
-      "The generative path does not fall back to Plotly, Delight, or rule-based rendering."
+      "The installed CLI exposes only the image action; there are no deterministic renderer commands or compatibility stubs.",
+      "The generative path does not fall back to deterministic, rule-based, or local chart rendering."
     ]
   }
 }

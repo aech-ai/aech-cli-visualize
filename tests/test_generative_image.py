@@ -377,16 +377,18 @@ def test_parse_data_input_accepts_jsonl_records(tmp_path) -> None:
     }
 
 
-def test_deterministic_renderer_commands_are_unsupported() -> None:
+def test_cli_registers_only_generative_image_command() -> None:
+    assert [command.name for command in app.registered_commands] == ["image"]
+    assert app.registered_groups == []
+
+
+def test_legacy_renderer_commands_are_not_callable() -> None:
     runner = CliRunner()
 
     result = runner.invoke(app, ["chart", "bar"])
 
-    assert result.exit_code == 1
-    output = json.loads(result.output)
-    assert output["success"] is False
-    assert output["replacement"] == "image"
-    assert "no longer supported" in output["error"]
+    assert result.exit_code == 2
+    assert "No such command" in result.output
 
 
 def test_cli_help_only_advertises_generative_image_command() -> None:
@@ -397,7 +399,10 @@ def test_cli_help_only_advertises_generative_image_command() -> None:
     assert result.exit_code == 0
     assert "image" in result.output
     assert "chart" not in result.output
+    assert "config" not in result.output
     assert "dashboard" not in result.output
+    assert "iterate" not in result.output
+    assert "themes" not in result.output
 
 
 def test_image_command_rejects_png_compression(tmp_path) -> None:

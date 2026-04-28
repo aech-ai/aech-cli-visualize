@@ -25,8 +25,6 @@ The generative path uses OpenAI:
 export OPENAI_API_KEY=...
 ```
 
-Working config state defaults to `~/work/.visualize/configs` so it stays writable inside worker homes.
-
 ## Command
 
 Use `image` for all visualization generation:
@@ -41,7 +39,7 @@ Supported input:
 - Wrapped payloads with `data`, `instructions`, `title`, and optional precomputed `analysis`
 - Narrative or arbitrary source material wrapped in JSON, usually under `data.source_text`
 
-Old deterministic commands such as `chart`, `kpi`, `table`, `gauge`, `dashboard`, and `iterate` are hidden compatibility stubs and are no longer supported.
+There are no deterministic renderer commands or compatibility stubs. The installed CLI exposes only `image` plus the `--version` option.
 
 ## Examples
 
