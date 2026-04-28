@@ -1,3 +1,3 @@
-"""aech-cli-visualize: Render dashboard widgets to presentation-ready images."""
+"""aech-cli-visualize: Generate analysis-rich visualization images."""
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
