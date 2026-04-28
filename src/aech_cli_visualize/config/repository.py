@@ -10,17 +10,15 @@ from .models import ConfigIndex, ConfigMetadata
 
 
 class ConfigRepository:
-    """Manages dashboard configurations in ~/.aech/visualize/configs/."""
-
-    DEFAULT_PATH = Path.home() / ".aech" / "visualize" / "configs"
+    """Manages dashboard configurations in ~/work/.visualize/configs/."""
 
     def __init__(self, base_path: Path | None = None):
         """Initialize the repository.
 
         Args:
-            base_path: Base path for the repository. Defaults to ~/.aech/visualize/configs/
+            base_path: Base path for the repository. Defaults to ~/work/.visualize/configs/
         """
-        self.base_path = base_path or self.DEFAULT_PATH
+        self.base_path = base_path or self.default_path()
         self.specs_dir = self.base_path / "specs"
         self.previews_dir = self.base_path / "previews"
         self.index_path = self.base_path / "index.json"
@@ -36,6 +34,10 @@ class ConfigRepository:
 
         if not self.index_path.exists():
             self._write_index(ConfigIndex())
+
+    @staticmethod
+    def default_path() -> Path:
+        return Path.home() / "work" / ".visualize" / "configs"
 
     def _read_index(self) -> ConfigIndex:
         """Read the config index."""
