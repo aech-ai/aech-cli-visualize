@@ -2,6 +2,7 @@
 
 import json
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -22,6 +23,25 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+
+def _package_version() -> str:
+    try:
+        return version("aech-cli-visualize")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+@app.callback(invoke_without_command=True)
+def main_callback(
+    version_flag: Annotated[
+        bool,
+        typer.Option("--version", "-V", help="Show the installed aech-cli-visualize version and exit."),
+    ] = False,
+) -> None:
+    if version_flag:
+        typer.echo(f"aech-cli-visualize {_package_version()}")
+        raise typer.Exit()
 
 
 def output_json(data: dict) -> None:
@@ -582,7 +602,7 @@ def image_command(
     max_data_chars: Annotated[
         int,
         typer.Option("--max-data-chars", help="Maximum serialized data chars allowed in model prompts"),
-    ] = 2_000,
+    ] = 20_000,
     image_timeout_seconds: Annotated[
         int,
         typer.Option("--image-timeout-seconds", help="Per-attempt timeout for GPT Image generation"),

@@ -142,6 +142,66 @@ def test_image_command_dry_run_with_precomputed_analysis(tmp_path) -> None:
     assert (tmp_path / "generative_visual.analysis.json").exists()
 
 
+def test_version_flag_reports_installed_package_version() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert result.output.startswith("aech-cli-visualize ")
+
+
+def test_image_help_shows_larger_default_data_limit() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["image", "--help"])
+
+    assert result.exit_code == 0
+    assert "[default: 20000]" in result.output
+
+
+def test_auto_analysis_uses_generated_code_for_large_payload(monkeypatch, tmp_path) -> None:
+    payload = resolve_visualization_input({
+        "title": "Large CRM",
+        "data": {"rows": [{"id": index, "value": index} for index in range(10)]},
+    })
+    analysis = VisualizationAnalysis.model_validate(_analysis_dict())
+    calls = []
+
+    def fake_analyze_with_generated_code(**kwargs):
+        calls.append(kwargs)
+        return type(
+            "CodeResult",
+            (),
+            {
+                "analysis": analysis,
+                "prompt_data": {"summary": [{"label": "Rows", "value": 10}]},
+            },
+        )()
+
+    def fake_generate_image(self, *, prompt, options, template_image=None):
+        return b"image", {"input_tokens": 1, "output_tokens": 1}
+
+    monkeypatch.setattr(
+        "aech_cli_visualize.generative.image_renderer.analyze_with_generated_code",
+        fake_analyze_with_generated_code,
+    )
+    monkeypatch.setattr(GenerativeImageRenderer, "_generate_image", fake_generate_image)
+
+    renderer = GenerativeImageRenderer(api_key="test-key")
+    result = renderer.render(
+        payload=payload,
+        output_dir=tmp_path,
+        filename="large",
+        options=ImageGenerationOptions(analysis_mode="auto", max_data_chars=80),
+    )
+
+    assert calls
+    assert calls[0]["data"] == payload.data
+    assert result.output_path == tmp_path / "large.png"
+    assert "Rows" in result.prompt
+
+
 def test_deterministic_renderer_commands_are_unsupported() -> None:
     runner = CliRunner()
 

@@ -8,7 +8,7 @@ from typing import Any
 from .models import VisualizationAnalysis
 
 
-MAX_PROMPT_DATA_CHARS = 2_000
+MAX_PROMPT_DATA_CHARS = 20_000
 
 
 def serialize_data_for_prompt(data: dict[str, Any], max_chars: int = MAX_PROMPT_DATA_CHARS) -> str:

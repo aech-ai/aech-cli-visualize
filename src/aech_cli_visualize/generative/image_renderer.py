@@ -203,6 +203,21 @@ class GenerativeImageRenderer:
             )
             return result.analysis, result.prompt_data
 
+        if options.analysis_mode == "auto":
+            data_text = json.dumps(payload.data, indent=2, sort_keys=True, default=str)
+            if len(data_text) > options.max_data_chars:
+                result = analyze_with_generated_code(
+                    data=payload.data,
+                    title=payload.title,
+                    instructions=payload.instructions,
+                    model=options.analysis_model,
+                    api_key=self.api_key,
+                    output_dir=output_dir,
+                    filename=filename,
+                    max_prompt_data_chars=options.max_data_chars,
+                )
+                return result.analysis, result.prompt_data
+
         return self._analyze_with_llm(payload=payload, options=options), payload.data
 
     def _analyze_with_llm(
