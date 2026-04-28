@@ -163,13 +163,13 @@ def test_image_help_shows_larger_default_data_limit() -> None:
     assert "[default: gpt-5.4]" in result.output
     assert "[default: gpt-5.5]" not in result.output
     assert "arbitrary visualization image" in result.output
+    assert "--response-model" not in result.output
 
 
 def test_image_generation_options_default_analysis_model_is_available_api_default() -> None:
     options = ImageGenerationOptions()
 
     assert options.analysis_model == "gpt-5.4"
-    assert options.response_model == "gpt-5.4"
     assert options.image_model == "gpt-image-2"
 
 
@@ -188,6 +188,14 @@ def test_manifest_says_numeric_data_is_optional() -> None:
     assert "anything the agent can make visual" in manifest["description"]
     assert "numeric data is optional" in manifest["actions"][0]["description"]
     assert any("not limited to charts" in note for note in manifest["documentation"]["notes"])
+
+
+def test_packaged_skill_is_named_visualize() -> None:
+    skill_path = Path("src/aech_cli_visualize/skills/visualize/SKILL.md")
+
+    assert skill_path.exists()
+    assert not Path("src/aech_cli_visualize/skills/dashboard-designer/SKILL.md").exists()
+    assert "name: visualize" in skill_path.read_text()
 
 
 def test_auto_analysis_uses_generated_code_for_large_payload(monkeypatch, tmp_path) -> None:

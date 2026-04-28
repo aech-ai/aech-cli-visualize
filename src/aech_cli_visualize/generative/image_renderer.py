@@ -44,7 +44,6 @@ class ImageGenerationOptions:
     """Generation settings for GPT Image."""
 
     image_model: str = "gpt-image-2"
-    response_model: str = "gpt-5.4"
     analysis_model: str = "gpt-5.4"
     analysis_mode: AnalysisMode = "auto"
     size: str = "2048x1152"
@@ -420,7 +419,6 @@ class GenerativeImageRenderer:
                     will_retry = retryable and attempt < max_attempts
                     append_llm_log_entry({
                         "model": options.image_model,
-                        "response_model": None,
                         "operation": "image_generation",
                         "tool_name": "image_generation",
                         "input_tokens": 0,
@@ -453,7 +451,6 @@ class GenerativeImageRenderer:
         cost_usd = _estimate_gpt_image_2_cost_usd(options.image_model, usage)
         append_llm_log_entry({
             "model": options.image_model,
-            "response_model": None,
             "operation": "image_generation",
             "tool_name": "image_generation",
             "input_tokens": usage["input_tokens"],

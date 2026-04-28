@@ -1,15 +1,16 @@
 ---
-name: dashboard-designer
-description: Generate arbitrary visual artifacts with aech-cli-visualize. Use when source material, records, text, status, workflows, or data would be clearer as an image. Not limited to charts, dashboards, or numeric data.
+name: visualize
+description: Visualize what the agent wants to communicate with aech-cli-visualize. Use when data, records, text, status, workflows, ideas, or plans would be clearer as an image. Not limited to charts, dashboards, or numeric data.
 allowed-tools: Read, Bash, Write, Grep, Glob
 ---
 
 # Visualize
 
-Use `aech-cli-visualize image` to turn agent-understood material into a polished image. The input does not need to be numeric. Anything can be visualized if the agent can express it as JSON, JSONL, or a wrapped payload with instructions.
+Use `aech-cli-visualize image` to turn agent-understood material into a polished image. The input does not need to be numeric. Anything the agent can clearly express as JSON, JSONL, or a wrapped payload with instructions can be visualized.
 
 Good uses include:
 - Executive dashboards and metric summaries
+- Arbitrary image generation for ideas the agent needs to communicate visually
 - Concept diagrams, process maps, system flows, and timelines
 - CRM/account summaries, deal boards, risk maps, and action plans
 - Annotated comparisons, status narratives, incident explanations, and decision briefs
