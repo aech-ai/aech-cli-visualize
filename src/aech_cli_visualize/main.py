@@ -235,11 +235,11 @@ def image_command(
         output_json({
             "success": True,
             "output_files": output_files,
-            "backend": "local-fallback" if result.image_fallback_used else "gpt-image",
-            "image_api": "local-pillow" if result.image_fallback_used else "images",
+            "backend": "gpt-image",
+            "image_api": "images",
             "image_model": image_model,
-            "image_fallback_used": result.image_fallback_used,
-            "image_fallback_reason": result.image_fallback_reason,
+            "image_unavailable": result.image_unavailable,
+            "image_unavailable_reason": result.image_unavailable_reason,
             "analysis_model": analysis_model,
             "analysis_mode": analysis_mode,
             "surface": surface,
@@ -263,8 +263,8 @@ def image_command(
             "message": (
                 "Generative visualization prompt prepared"
                 if dry_run
-                else "Visualization rendered with local fallback after GPT Image generation failed"
-                if result.image_fallback_used
+                else "Visualization unavailable because GPT Image generation failed"
+                if result.image_unavailable
                 else "Generative visualization image rendered with factual validation warnings"
                 if result.factual_validation_status == "warning"
                 else "Generative visualization image rendered successfully"
