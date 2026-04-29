@@ -56,7 +56,7 @@ class ImageGenerationOptions:
     image_timeout_seconds: int = 135
     image_max_attempts: int = 2
     factual_validation: bool = True
-    factual_validation_model: str | None = None
+    factual_validation_model: str | None = "gpt-5.4"
     factual_validation_max_attempts: int = 2
     dry_run: bool = False
 
@@ -268,7 +268,7 @@ class GenerativeImageRenderer:
             raise RuntimeError("OPENAI_API_KEY is required for factual image validation.")
 
         validator = FactualImageValidator(
-            model=options.factual_validation_model or options.analysis_model,
+            model=options.factual_validation_model or "gpt-5.4",
             api_key=self.api_key,
         )
         return validator.evaluate(

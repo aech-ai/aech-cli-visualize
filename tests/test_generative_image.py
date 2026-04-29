@@ -213,6 +213,48 @@ def test_image_generation_options_default_analysis_model_is_available_api_defaul
 
     assert options.analysis_model == "gpt-5.4"
     assert options.image_model == "gpt-image-2"
+    assert options.factual_validation_model == "gpt-5.4"
+
+
+def test_factual_validation_model_defaults_to_reviewer_model_not_analysis_model(monkeypatch, tmp_path) -> None:
+    payload = resolve_visualization_input({
+        "title": "Agent spend",
+        "data": {"date": ["Mon"], "spend_usd": [420]},
+        "analysis": _analysis_dict(),
+    })
+    used_models = []
+
+    def fake_evaluate(self, **_kwargs):
+        used_models.append(self.model_name)
+        return FactualValidationResult(
+            is_acceptable=True,
+            summary="All visible facts are grounded.",
+            issues=[],
+            correction_instructions="No correction needed.",
+        )
+
+    class FakeAgent:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setattr(GenerativeImageRenderer, "_generate_image", lambda *_, **__: (b"image", None))
+    monkeypatch.setattr("aech_cli_visualize.generative.factual_validator.Agent", FakeAgent)
+    monkeypatch.setattr("aech_cli_visualize.generative.factual_validator.build_pydantic_ai_model", lambda *_, **__: object())
+    monkeypatch.setattr("aech_cli_visualize.generative.factual_validator.FactualImageValidator.evaluate", fake_evaluate)
+
+    renderer = GenerativeImageRenderer(api_key="test-key")
+    renderer.render(
+        payload=payload,
+        output_dir=tmp_path,
+        filename="reviewer",
+        options=ImageGenerationOptions(
+            analysis_mode="precomputed",
+            analysis_model="openai-responses:gpt-5.4@reasoning_effort=high",
+            factual_validation_model=None,
+        ),
+    )
+
+    assert used_models == ["gpt-5.4"]
 
 
 def test_root_help_describes_arbitrary_visual_artifacts() -> None:

@@ -117,8 +117,8 @@ def image_command(
     ] = True,
     factual_validation_model: Annotated[
         Optional[str],
-        typer.Option("--factual-validation-model", help="Vision-capable model for post-generation factual validation; defaults to analysis model"),
-    ] = None,
+        typer.Option("--factual-validation-model", help="Vision-capable model for post-generation factual validation"),
+    ] = "gpt-5.4",
     factual_validation_max_attempts: Annotated[
         int,
         typer.Option("--factual-validation-max-attempts", help="Maximum generate/validate attempts before delivering with review warnings"),
@@ -246,7 +246,7 @@ def image_command(
             "image_timeout_seconds": image_timeout_seconds,
             "image_max_attempts": image_max_attempts,
             "factual_validation": factual_validate,
-            "factual_validation_model": factual_validation_model or analysis_model,
+            "factual_validation_model": options.factual_validation_model or "gpt-5.4",
             "factual_validation_max_attempts": factual_validation_max_attempts,
             "validation_attempts": result.validation_attempts,
             "factual_validation_status": result.factual_validation_status,

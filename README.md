@@ -109,7 +109,7 @@ aech-cli-visualize image payload.json \
 | `--analysis-mode precomputed` | Use an `analysis` object already supplied in the payload. |
 | `--max-data-chars` | Serialized data size allowed in direct model prompts. Default: `20000`. |
 | `--factual-validate / --no-factual-validate` | Validate generated image facts against the analysis/evidence. Default: enabled for generated images. |
-| `--factual-validation-model` | Vision-capable model for post-generation factual QA. Defaults to the analysis model. |
+| `--factual-validation-model` | Vision-capable model for post-generation factual QA. Default: `gpt-5.4`. |
 | `--factual-validation-max-attempts` | Maximum generate/validate attempts before delivering with review warnings. Default: `2`. |
 
 ## Outputs

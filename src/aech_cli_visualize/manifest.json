@@ -97,7 +97,7 @@
           "name": "factual-validation-model",
           "type": "option",
           "required": false,
-          "description": "Vision-capable model for post-generation factual validation. Defaults to the analysis model."
+          "description": "Vision-capable model for post-generation factual validation. Default: gpt-5.4."
         },
         {
           "name": "factual-validation-max-attempts",

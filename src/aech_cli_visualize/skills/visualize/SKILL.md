@@ -52,6 +52,7 @@ Useful options:
 - `--template-image`: use an existing screenshot or visual as a layout/style reference.
 - `--analysis-mode precomputed`: use when you already supplied a trusted `analysis` object.
 - `--analysis-mode code`: force generated-code analysis for larger structured payloads.
+- `--factual-validation-model`: override the post-generation reviewer model. Default: `gpt-5.4`.
 - `--factual-validate`: enabled by default; regenerates images with unsupported visible facts, then delivers with review warnings if findings remain.
 
 ## Working Rules
