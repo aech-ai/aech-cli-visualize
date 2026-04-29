@@ -121,7 +121,7 @@ def image_command(
     ] = None,
     factual_validation_max_attempts: Annotated[
         int,
-        typer.Option("--factual-validation-max-attempts", help="Maximum generate/validate attempts before failing"),
+        typer.Option("--factual-validation-max-attempts", help="Maximum generate/validate attempts before delivering with review warnings"),
     ] = 2,
     dry_run: Annotated[
         bool,
@@ -221,8 +221,16 @@ def image_command(
         ]
         if result.validation_path is not None:
             output_files.append(get_file_info(result.validation_path))
+        if result.validation_review_path is not None:
+            output_files.append(get_file_info(result.validation_review_path))
         if result.output_path is not None:
             output_files.insert(0, get_file_info(result.output_path))
+
+        validation_issues = (
+            [issue.model_dump() for issue in result.factual_validation.issues]
+            if result.factual_validation is not None
+            else []
+        )
 
         output_json({
             "success": True,
@@ -241,12 +249,20 @@ def image_command(
             "factual_validation_model": factual_validation_model or analysis_model,
             "factual_validation_max_attempts": factual_validation_max_attempts,
             "validation_attempts": result.validation_attempts,
+            "factual_validation_status": result.factual_validation_status,
+            "factual_validation_summary": (
+                result.factual_validation.summary if result.factual_validation is not None else None
+            ),
+            "factual_validation_disclaimer": result.factual_validation_disclaimer,
+            "factual_validation_issues": validation_issues,
             "dry_run": dry_run,
             "used_template_image": result.used_template_image,
             "usage": result.usage,
             "message": (
                 "Generative visualization prompt prepared"
                 if dry_run
+                else "Generative visualization image rendered with factual validation warnings"
+                if result.factual_validation_status == "warning"
                 else "Generative visualization image rendered successfully"
             ),
         })

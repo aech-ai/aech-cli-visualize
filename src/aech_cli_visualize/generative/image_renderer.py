@@ -73,8 +73,11 @@ class GenerativeImageRenderResult:
     usage: dict[str, Any] | None
     used_template_image: bool
     validation_path: Path | None = None
+    validation_review_path: Path | None = None
     factual_validation: FactualValidationResult | None = None
     validation_attempts: int = 0
+    factual_validation_status: Literal["not_run", "skipped", "accepted", "warning"] = "not_run"
+    factual_validation_disclaimer: str | None = None
 
 
 def resolve_visualization_input(
@@ -157,15 +160,23 @@ class GenerativeImageRenderer:
                 usage=None,
                 used_template_image=template_image is not None,
                 validation_path=None,
+                validation_review_path=None,
                 factual_validation=None,
                 validation_attempts=0,
+                factual_validation_status="not_run",
+                factual_validation_disclaimer=None,
             )
 
         output_path = output_directory / f"{filename}.{options.output_format}"
         validation_path = output_directory / f"{filename}.factual_validation.json"
+        validation_review_path = output_directory / f"{filename}.factual_review.md"
         usage: dict[str, Any] | None = None
         final_validation: FactualValidationResult | None = None
         validation_attempts = 0
+        factual_validation_status: Literal["skipped", "accepted", "warning"] = (
+            "accepted" if options.factual_validation else "skipped"
+        )
+        factual_validation_disclaimer: str | None = None
         generation_prompt = prompt
         max_validation_attempts = (
             max(1, int(options.factual_validation_max_attempts))
@@ -201,11 +212,22 @@ class GenerativeImageRenderer:
                 break
 
             if generation_attempt >= max_validation_attempts:
-                raise RuntimeError(
-                    "Generated image failed factual validation after "
-                    f"{generation_attempt}/{max_validation_attempts} attempt(s): "
-                    f"{final_validation.summary}"
+                factual_validation_status = "warning"
+                factual_validation_disclaimer = _build_factual_validation_disclaimer(
+                    validation=final_validation,
+                    attempts=generation_attempt,
+                    max_attempts=max_validation_attempts,
                 )
+                validation_review_path.write_text(
+                    _build_factual_validation_review_note(
+                        validation=final_validation,
+                        attempts=generation_attempt,
+                        max_attempts=max_validation_attempts,
+                        disclaimer=factual_validation_disclaimer,
+                    ),
+                    encoding="utf-8",
+                )
+                break
 
             generation_prompt = self._build_regeneration_prompt(
                 base_prompt=prompt,
@@ -221,8 +243,15 @@ class GenerativeImageRenderer:
             usage=usage,
             used_template_image=template_image is not None,
             validation_path=validation_path if options.factual_validation else None,
+            validation_review_path=(
+                validation_review_path
+                if options.factual_validation and factual_validation_status == "warning"
+                else None
+            ),
             factual_validation=final_validation,
             validation_attempts=validation_attempts,
+            factual_validation_status=factual_validation_status,
+            factual_validation_disclaimer=factual_validation_disclaimer,
         )
 
     def _validate_generated_image(
@@ -481,6 +510,59 @@ def _extract_images_api_result(response: Any) -> str | None:
     if result:
         return str(result)
     return None
+
+
+def _build_factual_validation_disclaimer(
+    *,
+    validation: FactualValidationResult,
+    attempts: int,
+    max_attempts: int,
+) -> str:
+    issue_count = len(validation.issues)
+    issue_label = "issue" if issue_count == 1 else "issues"
+    return (
+        "Disclaimer: this generated visual was delivered with fact-checker review "
+        f"findings after {attempts}/{max_attempts} validation attempt(s). Treat "
+        f"the flagged visual elements as potentially inaccurate until reviewed "
+        f"against the source data. The validator reported {issue_count} {issue_label}."
+    )
+
+
+def _build_factual_validation_review_note(
+    *,
+    validation: FactualValidationResult,
+    attempts: int,
+    max_attempts: int,
+    disclaimer: str,
+) -> str:
+    lines = [
+        "# Factual Validation Review",
+        "",
+        disclaimer,
+        "",
+        f"Validation status: warning after {attempts}/{max_attempts} attempt(s).",
+        f"Validator summary: {validation.summary}",
+        "",
+        "## Findings",
+        "",
+    ]
+    if not validation.issues:
+        lines.append("- No structured issue was returned, but the validator did not accept the image.")
+    else:
+        for index, issue in enumerate(validation.issues, start=1):
+            lines.extend([
+                f"{index}. [{issue.severity}] {issue.kind}",
+                f"   - Finding: {issue.description}",
+                f"   - Evidence: {issue.evidence}",
+            ])
+    lines.extend([
+        "",
+        "## Suggested Correction",
+        "",
+        validation.correction_instructions,
+        "",
+    ])
+    return "\n".join(lines)
 
 
 def _format_exception_chain(exc: BaseException) -> str:

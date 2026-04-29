@@ -103,7 +103,7 @@
           "name": "factual-validation-max-attempts",
           "type": "option",
           "required": false,
-          "description": "Maximum generate/validate attempts before failing loudly. Default: 2."
+          "description": "Maximum generate/validate attempts before delivering with review warnings. Default: 2."
         },
         {
           "name": "dry-run",
@@ -132,12 +132,16 @@
       "factual_validation_artifact": {
         "path": "<output-dir>/<filename>.factual_validation.json",
         "description": "Post-generation visual fact-check artifact"
+      },
+      "factual_review_artifact": {
+        "path": "<output-dir>/<filename>.factual_review.md",
+        "description": "Disclaimer and review findings when fact-checker warnings remain after retry attempts"
       }
     },
     "notes": [
       "Use the image action for all visualization generation.",
       "Visualize is not limited to charts, dashboards, or numeric data. Any agent-understood source material can be turned into an explanatory image when it is supplied as JSON/JSONL or wrapped text.",
-      "Generated images are fact-checked by default against the typed analysis and condensed evidence JSON; unsupported visible facts cause regeneration and then a hard failure if still unresolved.",
+      "Generated images are fact-checked by default against the typed analysis and condensed evidence JSON; unsupported visible facts cause regeneration and then a warning response with disclaimer/review findings if still unresolved.",
       "The installed CLI exposes only the image action; there are no deterministic renderer commands or compatibility stubs.",
       "The generative path does not fall back to deterministic, rule-based, or local chart rendering."
     ]

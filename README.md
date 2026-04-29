@@ -110,7 +110,7 @@ aech-cli-visualize image payload.json \
 | `--max-data-chars` | Serialized data size allowed in direct model prompts. Default: `20000`. |
 | `--factual-validate / --no-factual-validate` | Validate generated image facts against the analysis/evidence. Default: enabled for generated images. |
 | `--factual-validation-model` | Vision-capable model for post-generation factual QA. Defaults to the analysis model. |
-| `--factual-validation-max-attempts` | Maximum generate/validate attempts before failing loudly. Default: `2`. |
+| `--factual-validation-max-attempts` | Maximum generate/validate attempts before delivering with review warnings. Default: `2`. |
 
 ## Outputs
 
@@ -123,18 +123,21 @@ The command writes a structured JSON result to stdout and files under `--output-
     {"path": "./out/generative_visual.png", "format": "png", "size_bytes": 123456},
     {"path": "./out/generative_visual.prompt.txt", "format": "txt", "size_bytes": 3200},
     {"path": "./out/generative_visual.analysis.json", "format": "json", "size_bytes": 1800},
-    {"path": "./out/generative_visual.factual_validation.json", "format": "json", "size_bytes": 900}
+    {"path": "./out/generative_visual.factual_validation.json", "format": "json", "size_bytes": 900},
+    {"path": "./out/generative_visual.factual_review.md", "format": "md", "size_bytes": 600}
   ],
   "backend": "gpt-image",
   "image_model": "gpt-image-2",
   "analysis_mode": "auto",
-  "factual_validation": true
+  "factual_validation": true,
+  "factual_validation_status": "warning",
+  "factual_validation_disclaimer": "Disclaimer: this generated visual was delivered with fact-checker review findings..."
 }
 ```
 
 For `--analysis-mode code`, the CLI may also write `*.analysis_code.py`, `*.analysis_sample.json`, and `*.analysis_full.json`.
 
-Generated images are fact-checked by default. The validator looks at the image and rejects visible numbers, labels, charts, callouts, or conclusions that are not grounded in the typed analysis and condensed evidence JSON. Rejected images are regenerated with explicit correction instructions; if validation still fails, the command exits with an error instead of returning a fabricated business visual.
+Generated images are fact-checked by default. The validator looks at the image and flags visible numbers, labels, charts, callouts, or conclusions that are not grounded in the typed analysis and condensed evidence JSON. Rejected images are regenerated with explicit correction instructions; if validation still fails, the command still returns the generated image but marks `factual_validation_status` as `warning`, includes `factual_validation_disclaimer` and `factual_validation_issues` in stdout, and writes a `*.factual_review.md` companion note.
 
 ## Development
 

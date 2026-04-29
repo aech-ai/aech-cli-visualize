@@ -322,11 +322,16 @@ def test_image_render_runs_factual_validation_after_generation(monkeypatch, tmp_
     assert validations[0]["prompt_data"] == payload.data
     assert result.factual_validation is not None
     assert result.factual_validation.is_acceptable is True
+    assert result.factual_validation_status == "accepted"
+    assert result.validation_review_path is None
     assert result.validation_path == tmp_path / "validated.factual_validation.json"
     assert json.loads(result.validation_path.read_text())["is_acceptable"] is True
 
 
-def test_image_render_regenerates_then_fails_loudly_on_factual_rejection(monkeypatch, tmp_path) -> None:
+def test_image_render_regenerates_then_delivers_review_warning_on_factual_rejection(
+    monkeypatch,
+    tmp_path,
+) -> None:
     payload = resolve_visualization_input({
         "title": "Agent spend",
         "data": {"date": ["Mon", "Tue"], "spend_usd": [420, 1240]},
@@ -358,22 +363,26 @@ def test_image_render_regenerates_then_fails_loudly_on_factual_rejection(monkeyp
 
     renderer = GenerativeImageRenderer(api_key="test-key")
 
-    try:
-        renderer.render(
-            payload=payload,
-            output_dir=tmp_path,
-            filename="rejected",
-            options=ImageGenerationOptions(
-                analysis_mode="precomputed",
-                factual_validation_max_attempts=2,
-            ),
-        )
-    except RuntimeError as exc:
-        assert "failed factual validation" in str(exc)
-    else:
-        raise AssertionError("Expected factual validation failure")
+    result = renderer.render(
+        payload=payload,
+        output_dir=tmp_path,
+        filename="rejected",
+        options=ImageGenerationOptions(
+            analysis_mode="precomputed",
+            factual_validation_max_attempts=2,
+        ),
+    )
 
     assert len(generated_prompts) == 2
+    assert result.output_path == tmp_path / "rejected.png"
+    assert result.factual_validation_status == "warning"
+    assert result.factual_validation_disclaimer is not None
+    assert "delivered with fact-checker review findings" in result.factual_validation_disclaimer
+    assert result.validation_review_path == tmp_path / "rejected.factual_review.md"
+    review_note = result.validation_review_path.read_text()
+    assert "Disclaimer:" in review_note
+    assert "unsupported_chart" in review_note
+    assert "Remove the unsupported second chart." in review_note
     assert "Previous generated image failed factual validation" in generated_prompts[1]
     assert "unsupported second chart" in generated_prompts[1]
     assert "Previous generated image failed factual validation" in (
@@ -410,6 +419,8 @@ def test_image_render_can_disable_factual_validation(monkeypatch, tmp_path) -> N
 
     assert result.output_path == tmp_path / "unvalidated.png"
     assert result.validation_path is None
+    assert result.validation_review_path is None
+    assert result.factual_validation_status == "skipped"
     assert result.validation_attempts == 0
 
 
