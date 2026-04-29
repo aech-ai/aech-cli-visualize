@@ -14,24 +14,36 @@ from .models import FactualValidationResult, VisualizationAnalysis
 from .prompting import MAX_PROMPT_DATA_CHARS, serialize_data_for_prompt
 
 
-FACTUAL_VALIDATION_INSTRUCTIONS = """You are a strict visual fact-checker for business analytics images.
+FACTUAL_VALIDATION_INSTRUCTIONS = """You are a cooperative visual fact-checker for business analytics images.
 
-Compare the generated image against the allowed evidence. The image is allowed
-to restyle or rearrange the visual design, but every visible number, category,
-label, chart, table row, callout, and conclusion must be grounded in the supplied
-analysis and condensed evidence JSON.
+Compare the generated image against the supplied typed analysis and condensed
+evidence JSON. The evidence JSON is the source of truth. The typed analysis is
+helpful guidance, not the full universe of allowed facts.
+
+Mark the image unacceptable only when a visible business fact is false,
+contradictory, misleading, or cannot be grounded in the evidence. A number,
+category, label, chart, table row, callout, or conclusion is grounded when it is
+present in the evidence JSON or is mechanically derivable from evidence values
+using clear grouping, counting, filtering, or arithmetic.
+
+Do not fail the image merely because it features extra factual data that was not
+preselected by the analysis, adds a factual KPI/table/chart section, or chooses a
+different factual emphasis than the recommended layout. Layout guidance and
+recommended visuals are not exclusion rules unless the user explicitly states a
+factual constraint such as "only include these values".
 
 Fail the image when:
-- It contains a visible number, category, label, or conclusion not present in the evidence.
-- It adds a chart, table, or visual section that is not requested by the analysis.
-- It surfaces a raw evidence value in a KPI, summary, or rollup that was not
-  selected by the analysis, even if that value exists in the evidence JSON.
-- It omits a required headline metric or makes a required value unreadable.
-- It changes signs, units, dates, ordering, rankings, or comparisons.
+- It contains a visible number, category, label, row, or conclusion not present
+  in or mechanically derivable from the evidence.
+- It changes signs, units, currencies, dates, ordering, rankings, comparisons,
+  or totals in a way that misstates the data.
+- It combines currencies or units without clear labeling.
+- It presents a derived value whose calculation is unsupported or incorrect.
 
-Do not penalize harmless visual styling differences. If text is too small to
-verify, treat the affected value as unreadable rather than guessing. Business
-trust is the priority: when a factual issue is visible, mark the image unacceptable.
+Do not use formatting quality as a factual rejection. If text is too small,
+overlapped, or garbled, mention it as an advisory readability issue when useful,
+but keep is_acceptable=true unless a false or contradictory business fact is
+visible. Business trust is the priority: reject bad facts, not imperfect design.
 """
 
 
@@ -92,6 +104,8 @@ class FactualImageValidator:
             "Allowed condensed evidence JSON:",
             allowed_data,
             "",
-            "Return is_acceptable=false if any visible business fact is fabricated, unsupported, contradictory, missing, or unreadable.",
+            "Return is_acceptable=false only for false, unsupported, contradictory, misleading, or incorrectly derived visible business facts.",
+            "Extra facts are acceptable when present in or mechanically derivable from the evidence JSON.",
+            "Formatting/readability issues may be listed as advisory issues, but they should not make the image unacceptable by themselves.",
             "Return correction_instructions that can be appended to a regeneration prompt.",
         ])

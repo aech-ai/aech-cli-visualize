@@ -331,13 +331,13 @@ class GenerativeImageRenderer:
             "",
             "Previous generated image failed factual validation.",
             validation.summary,
-            "Correct these factual issues without adding new visible data:",
+            "Correct these factual issues. Extra visible data is allowed only when it is grounded in the evidence JSON:",
             "\n".join(issues) if issues else "- Unspecified factual mismatch.",
             "",
             "Correction instructions:",
             validation.correction_instructions,
             "",
-            "Regenerate the image using only the allowed values and visual elements above.",
+            "Regenerate the image using only facts present in or mechanically derivable from the evidence JSON.",
         ])
 
     def _resolve_analysis(

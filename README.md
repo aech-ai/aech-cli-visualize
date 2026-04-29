@@ -137,7 +137,7 @@ The command writes a structured JSON result to stdout and files under `--output-
 
 For `--analysis-mode code`, the CLI may also write `*.analysis_code.py`, `*.analysis_sample.json`, and `*.analysis_full.json`.
 
-Generated images are fact-checked by default. The validator looks at the image and flags visible numbers, labels, charts, callouts, or conclusions that are not grounded in the typed analysis and condensed evidence JSON. Rejected images are regenerated with explicit correction instructions; if validation still fails, the command still returns the generated image but marks `factual_validation_status` as `warning`, includes `factual_validation_disclaimer` and `factual_validation_issues` in stdout, and writes a `*.factual_review.md` companion note.
+Generated images are fact-checked by default. The validator looks at the image and flags visible numbers, labels, charts, callouts, or conclusions that are false, contradictory, or not grounded in the condensed evidence JSON. Extra visible data is allowed when it is present in or mechanically derivable from the evidence; layout guidance is not treated as an exclusion list. Rejected images are regenerated with explicit correction instructions; if validation still fails, the command still returns the generated image but marks `factual_validation_status` as `warning`, includes `factual_validation_disclaimer` and `factual_validation_issues` in stdout, and writes a `*.factual_review.md` companion note.
 
 ## Development
 

@@ -53,7 +53,7 @@ Useful options:
 - `--analysis-mode precomputed`: use when you already supplied a trusted `analysis` object.
 - `--analysis-mode code`: force generated-code analysis for larger structured payloads.
 - `--factual-validation-model`: override the post-generation reviewer model. Default: `gpt-5.4`.
-- `--factual-validate`: enabled by default; regenerates images with unsupported visible facts, then delivers with review warnings if findings remain.
+- `--factual-validate`: enabled by default; regenerates images with false, contradictory, or unsupported visible facts, then delivers with review warnings if factual findings remain.
 
 ## Working Rules
 
@@ -63,7 +63,7 @@ Useful options:
 - In direct email or Teams channels, the task is not complete until either the image exists and is listed in structured `outbound_attachments` using a session-relative path, or stdout JSON reports `image_unavailable: true`.
 - Do not reply with "I'm generating it", "I'm producing it now", or other progress-only text. Run `aech-cli-visualize image` first, then answer with the attachment and a short summary.
 - If the render fails, return a concrete failure report with the exact command, exit status, and stderr/stdout summary rather than a promise to keep working.
-- Treat factual validation warnings as user-visible caveats. Show the generated image only with the disclaimer and review findings from the CLI output/artifacts.
+- Treat factual validation warnings as user-visible caveats. Show the generated image only with the disclaimer and factual review findings from the CLI output/artifacts.
 - If `image_unavailable` is `true`, do not attach any file; tell the user the visualization is temporarily unavailable and include the concise unavailable reason from stdout JSON.
 - Always inspect the generated image before showing it to the user.
 - Use `--dry-run` when you need to audit the prompt and analysis without spending an image call.
