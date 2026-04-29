@@ -432,6 +432,96 @@ def test_image_render_regenerates_then_delivers_review_warning_on_factual_reject
     ).read_text()
 
 
+def test_image_render_writes_local_fallback_when_image_generation_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    payload = resolve_visualization_input({
+        "title": "Agent spend",
+        "data": {"rows": [{"date": "Mon", "spend_usd": 420}]},
+        "analysis": _analysis_dict(),
+    })
+
+    def fail_generate_image(self, *, prompt, options, template_image=None):
+        raise RuntimeError(
+            "Image generation failed after 2/2 attempt(s): "
+            "APIConnectionError: Connection error."
+        )
+
+    def fail_validate(self, **_kwargs):
+        raise AssertionError("Fallback image should not call the vision fact-checker")
+
+    monkeypatch.setattr(GenerativeImageRenderer, "_generate_image", fail_generate_image)
+    monkeypatch.setattr(GenerativeImageRenderer, "_validate_generated_image", fail_validate)
+
+    renderer = GenerativeImageRenderer(api_key="test-key")
+    result = renderer.render(
+        payload=payload,
+        output_dir=tmp_path,
+        filename="fallback",
+        options=ImageGenerationOptions(analysis_mode="precomputed"),
+    )
+
+    assert result.output_path == tmp_path / "fallback.png"
+    assert result.output_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert result.image_fallback_used is True
+    assert "APIConnectionError" in result.image_fallback_reason
+    assert result.factual_validation_status == "warning"
+    assert result.factual_validation is not None
+    assert result.factual_validation.is_acceptable is False
+    assert result.validation_path == tmp_path / "fallback.factual_validation.json"
+    assert result.validation_review_path == tmp_path / "fallback.factual_review.md"
+    assert "local fallback" in result.validation_review_path.read_text()
+
+
+def test_image_command_returns_success_with_local_fallback_on_generation_failure(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    input_path = tmp_path / "payload.json"
+    input_path.write_text(json.dumps({
+        "title": "Agent spend",
+        "data": {"rows": [{"date": "Mon", "spend_usd": 420}]},
+        "analysis": _analysis_dict(),
+    }))
+
+    def fail_generate_image(self, *, prompt, options, template_image=None):
+        raise RuntimeError(
+            "Image generation failed after 2/2 attempt(s): "
+            "APIConnectionError: Connection error."
+        )
+
+    monkeypatch.setattr(GenerativeImageRenderer, "_generate_image", fail_generate_image)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "image",
+            str(input_path),
+            "--output-dir",
+            str(tmp_path),
+            "--analysis-mode",
+            "precomputed",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    output_paths = {Path(item["path"]).name for item in output["output_files"]}
+    assert output["success"] is True
+    assert output["backend"] == "local-fallback"
+    assert output["image_api"] == "local-pillow"
+    assert output["image_fallback_used"] is True
+    assert "APIConnectionError" in output["image_fallback_reason"]
+    assert output["factual_validation_status"] == "warning"
+    assert output["message"] == (
+        "Visualization rendered with local fallback after GPT Image generation failed"
+    )
+    assert "generative_visual.png" in output_paths
+    assert "generative_visual.factual_review.md" in output_paths
+
+
 def test_image_render_can_disable_factual_validation(monkeypatch, tmp_path) -> None:
     payload = resolve_visualization_input({
         "title": "Agent spend",

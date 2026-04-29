@@ -64,6 +64,7 @@ Useful options:
 - Do not reply with "I'm generating it", "I'm producing it now", or other progress-only text. Run `aech-cli-visualize image` first, then answer with the attachment and a short summary.
 - If the render fails, return a concrete failure report with the exact command, exit status, and stderr/stdout summary rather than a promise to keep working.
 - Treat factual validation warnings as user-visible caveats. Show the generated image only with the disclaimer and review findings from the CLI output/artifacts.
+- If `image_fallback_used` is `true`, still deliver the image as the visual artifact, include the fallback disclaimer, and attach or summarize the factual review artifact.
 - Always inspect the generated image before showing it to the user.
 - Use `--dry-run` when you need to audit the prompt and analysis without spending an image call.
 - The CLI exposes only `image`; there are no deterministic renderer commands or compatibility stubs.
@@ -76,5 +77,7 @@ The command writes:
 - `<output-dir>/generative_visual.analysis.json`
 - `<output-dir>/generative_visual.factual_validation.json` when generation runs with factual validation
 - `<output-dir>/generative_visual.factual_review.md` when validation findings remain after retry attempts
+
+If GPT Image transport fails after retries, the CLI writes a local fallback image plus a factual review note and reports `image_fallback_used: true` in stdout JSON.
 
 For `--analysis-mode code`, it may also write generated-code audit artifacts beside the image.

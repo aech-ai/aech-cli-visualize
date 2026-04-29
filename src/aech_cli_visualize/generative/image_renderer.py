@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import textwrap
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,6 +79,8 @@ class GenerativeImageRenderResult:
     validation_attempts: int = 0
     factual_validation_status: Literal["not_run", "skipped", "accepted", "warning"] = "not_run"
     factual_validation_disclaimer: str | None = None
+    image_fallback_used: bool = False
+    image_fallback_reason: str | None = None
 
 
 def resolve_visualization_input(
@@ -165,6 +168,8 @@ class GenerativeImageRenderer:
                 validation_attempts=0,
                 factual_validation_status="not_run",
                 factual_validation_disclaimer=None,
+                image_fallback_used=False,
+                image_fallback_reason=None,
             )
 
         output_path = output_directory / f"{filename}.{options.output_format}"
@@ -177,6 +182,8 @@ class GenerativeImageRenderer:
             "accepted" if options.factual_validation else "skipped"
         )
         factual_validation_disclaimer: str | None = None
+        image_fallback_used = False
+        image_fallback_reason: str | None = None
         generation_prompt = prompt
         max_validation_attempts = (
             max(1, int(options.factual_validation_max_attempts))
@@ -186,12 +193,45 @@ class GenerativeImageRenderer:
 
         for generation_attempt in range(1, max_validation_attempts + 1):
             prompt_path.write_text(generation_prompt, encoding="utf-8")
-            image_bytes, usage = self._generate_image(
-                prompt=generation_prompt,
-                options=options,
-                template_image=template_image,
-            )
-            output_path.write_bytes(image_bytes)
+            try:
+                image_bytes, usage = self._generate_image(
+                    prompt=generation_prompt,
+                    options=options,
+                    template_image=template_image,
+                )
+                output_path.write_bytes(image_bytes)
+            except RuntimeError as exc:
+                image_fallback_used = True
+                image_fallback_reason = str(exc)
+                previous_validation = final_validation
+                self._render_local_fallback_image(
+                    output_path=output_path,
+                    payload=payload,
+                    analysis=analysis,
+                    prompt_data=prompt_data,
+                    options=options,
+                    failure_reason=image_fallback_reason,
+                )
+                final_validation = _build_image_generation_fallback_validation(
+                    failure_reason=image_fallback_reason,
+                    previous_validation=previous_validation,
+                )
+                factual_validation_status = "warning"
+                factual_validation_disclaimer = _build_image_generation_fallback_disclaimer(
+                    failure_reason=image_fallback_reason
+                )
+                validation_path.write_text(
+                    json.dumps(final_validation.model_dump(), indent=2),
+                    encoding="utf-8",
+                )
+                validation_review_path.write_text(
+                    _build_image_generation_fallback_review_note(
+                        validation=final_validation,
+                        disclaimer=factual_validation_disclaimer,
+                    ),
+                    encoding="utf-8",
+                )
+                break
 
             if not options.factual_validation:
                 break
@@ -242,17 +282,255 @@ class GenerativeImageRenderer:
             prompt=prompt,
             usage=usage,
             used_template_image=template_image is not None,
-            validation_path=validation_path if options.factual_validation else None,
+            validation_path=(
+                validation_path if options.factual_validation or image_fallback_used else None
+            ),
             validation_review_path=(
                 validation_review_path
-                if options.factual_validation and factual_validation_status == "warning"
+                if (options.factual_validation or image_fallback_used)
+                and factual_validation_status == "warning"
                 else None
             ),
             factual_validation=final_validation,
             validation_attempts=validation_attempts,
             factual_validation_status=factual_validation_status,
             factual_validation_disclaimer=factual_validation_disclaimer,
+            image_fallback_used=image_fallback_used,
+            image_fallback_reason=image_fallback_reason,
         )
+
+    def _render_local_fallback_image(
+        self,
+        *,
+        output_path: Path,
+        payload: VisualizationPayload,
+        analysis: VisualizationAnalysis,
+        prompt_data: dict[str, Any],
+        options: ImageGenerationOptions,
+        failure_reason: str,
+    ) -> None:
+        """Write a deterministic local visual when the Images API cannot return bytes."""
+        try:
+            from PIL import Image, ImageDraw
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise RuntimeError(
+                "Pillow is required for local fallback image rendering."
+            ) from exc
+
+        width, height = _resolve_fallback_canvas_size(options.size, options.surface)
+        image = Image.new("RGB", (width, height), "#f6f8fb")
+        draw = ImageDraw.Draw(image)
+
+        for y in range(height):
+            ratio = y / max(1, height - 1)
+            red = int(246 - (ratio * 15))
+            green = int(248 - (ratio * 20))
+            blue = int(251 - (ratio * 10))
+            draw.line([(0, y), (width, y)], fill=(red, green, blue))
+
+        margin = max(48, width // 28)
+        header_height = max(150, height // 7)
+        content_top = margin + header_height + 28
+        card_gap = max(20, width // 80)
+
+        title_font = _load_fallback_font(max(34, width // 34), bold=True)
+        subtitle_font = _load_fallback_font(max(20, width // 72))
+        label_font = _load_fallback_font(max(17, width // 96), bold=True)
+        body_font = _load_fallback_font(max(18, width // 90))
+        small_font = _load_fallback_font(max(15, width // 112))
+        metric_font = _load_fallback_font(max(26, width // 52), bold=True)
+
+        draw.rounded_rectangle(
+            [margin, margin, width - margin, margin + header_height],
+            radius=22,
+            fill="#15324a",
+        )
+        draw.text(
+            (margin + 34, margin + 30),
+            _truncate_text(payload.title or analysis.headline, 78),
+            fill="#ffffff",
+            font=title_font,
+        )
+        _draw_wrapped_text(
+            draw=draw,
+            xy=(margin + 34, margin + 88),
+            text=analysis.narrative,
+            font=subtitle_font,
+            fill="#dce8f2",
+            max_width=width - (margin * 2) - 360,
+            max_lines=2,
+            line_spacing=8,
+        )
+        badge_text = "LOCAL FALLBACK"
+        badge_width = int(draw.textlength(badge_text, font=label_font)) + 38
+        draw.rounded_rectangle(
+            [width - margin - badge_width - 28, margin + 34, width - margin - 28, margin + 80],
+            radius=18,
+            fill="#f2b84b",
+        )
+        draw.text(
+            (width - margin - badge_width - 9, margin + 45),
+            badge_text,
+            fill="#1c2530",
+            font=label_font,
+        )
+        _draw_wrapped_text(
+            draw=draw,
+            xy=(width - margin - 320, margin + 92),
+            text="GPT Image transport failed; this artifact is rendered locally from the typed analysis and source data.",
+            font=small_font,
+            fill="#dce8f2",
+            max_width=290,
+            max_lines=3,
+            line_spacing=4,
+        )
+
+        metric_area_height = max(160, height // 5)
+        metrics = analysis.key_metrics[:4]
+        metric_count = max(1, len(metrics))
+        metric_card_width = (width - (margin * 2) - (card_gap * (metric_count - 1))) // metric_count
+        metric_y1 = content_top
+        metric_y2 = content_top + metric_area_height
+        if metrics:
+            for index, metric in enumerate(metrics):
+                x1 = margin + index * (metric_card_width + card_gap)
+                x2 = x1 + metric_card_width
+                accent = ["#2f6fed", "#17a398", "#d85d5d", "#7c5cc4"][index % 4]
+                _draw_panel(draw, [x1, metric_y1, x2, metric_y2], accent=accent)
+                draw.text((x1 + 24, metric_y1 + 22), metric.label, fill="#4d6175", font=label_font)
+                _draw_wrapped_text(
+                    draw=draw,
+                    xy=(x1 + 24, metric_y1 + 58),
+                    text=metric.value,
+                    font=metric_font,
+                    fill="#162234",
+                    max_width=metric_card_width - 48,
+                    max_lines=2,
+                    line_spacing=5,
+                )
+                if metric.context:
+                    _draw_wrapped_text(
+                        draw=draw,
+                        xy=(x1 + 24, metric_y2 - 54),
+                        text=metric.context,
+                        font=small_font,
+                        fill="#6c7d8e",
+                        max_width=metric_card_width - 48,
+                        max_lines=2,
+                        line_spacing=3,
+                    )
+        else:
+            _draw_panel(draw, [margin, metric_y1, width - margin, metric_y2], accent="#2f6fed")
+            draw.text((margin + 24, metric_y1 + 22), "Visible metrics", fill="#4d6175", font=label_font)
+            _draw_wrapped_text(
+                draw=draw,
+                xy=(margin + 24, metric_y1 + 62),
+                text="No explicit KPI metrics were specified by the analysis.",
+                font=body_font,
+                fill="#162234",
+                max_width=width - (margin * 2) - 48,
+                max_lines=3,
+                line_spacing=6,
+            )
+
+        lower_y1 = metric_y2 + card_gap
+        lower_y2 = height - margin
+        left_width = int((width - (margin * 2) - card_gap) * 0.56)
+        right_width = width - (margin * 2) - card_gap - left_width
+        left_x1 = margin
+        left_x2 = left_x1 + left_width
+        right_x1 = left_x2 + card_gap
+        right_x2 = right_x1 + right_width
+
+        _draw_panel(draw, [left_x1, lower_y1, left_x2, lower_y2], accent="#17a398")
+        draw.text((left_x1 + 28, lower_y1 + 24), "Review Findings", fill="#4d6175", font=label_font)
+        current_y = lower_y1 + 68
+        insights = analysis.insights[:5]
+        if not insights:
+            current_y = _draw_wrapped_text(
+                draw=draw,
+                xy=(left_x1 + 28, current_y),
+                text="No structured insights were returned by the analysis.",
+                font=body_font,
+                fill="#162234",
+                max_width=left_width - 56,
+                max_lines=3,
+                line_spacing=6,
+            )
+        for insight in insights:
+            severity_color = {
+                "critical": "#d85d5d",
+                "warning": "#d99432",
+                "positive": "#17a398",
+                "info": "#2f6fed",
+            }.get(insight.severity, "#2f6fed")
+            draw.rounded_rectangle(
+                [left_x1 + 28, current_y + 6, left_x1 + 40, current_y + 18],
+                radius=6,
+                fill=severity_color,
+            )
+            draw.text((left_x1 + 52, current_y), insight.label, fill="#162234", font=label_font)
+            current_y = _draw_wrapped_text(
+                draw=draw,
+                xy=(left_x1 + 52, current_y + 32),
+                text=insight.explanation,
+                font=body_font,
+                fill="#30465c",
+                max_width=left_width - 86,
+                max_lines=2,
+                line_spacing=6,
+            ) + 16
+            if current_y > lower_y2 - 72:
+                break
+
+        _draw_panel(draw, [right_x1, lower_y1, right_x2, lower_y2], accent="#7c5cc4")
+        draw.text((right_x1 + 28, lower_y1 + 24), "Source Snapshot", fill="#4d6175", font=label_font)
+        current_y = lower_y1 + 66
+        for line in _build_source_snapshot_lines(prompt_data, analysis):
+            current_y = _draw_wrapped_text(
+                draw=draw,
+                xy=(right_x1 + 28, current_y),
+                text=line,
+                font=body_font,
+                fill="#162234",
+                max_width=right_width - 56,
+                max_lines=2,
+                line_spacing=5,
+            ) + 10
+            if current_y > lower_y2 - 124:
+                break
+
+        draw.rounded_rectangle(
+            [right_x1 + 28, lower_y2 - 96, right_x2 - 28, lower_y2 - 28],
+            radius=16,
+            fill="#fff6df",
+            outline="#f2b84b",
+            width=2,
+        )
+        _draw_wrapped_text(
+            draw=draw,
+            xy=(right_x1 + 48, lower_y2 - 80),
+            text=f"Image API failure: {_truncate_text(failure_reason, 140)}",
+            font=small_font,
+            fill="#6f4d00",
+            max_width=right_width - 96,
+            max_lines=2,
+            line_spacing=4,
+        )
+
+        save_format = {
+            "png": "PNG",
+            "jpeg": "JPEG",
+            "webp": "WEBP",
+        }[options.output_format]
+        save_kwargs: dict[str, Any] = {}
+        if options.output_format in {"jpeg", "webp"}:
+            quality = 95
+            if options.output_compression is not None:
+                quality = max(1, min(100, 100 - int(options.output_compression)))
+            save_kwargs["quality"] = quality
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        image.save(output_path, format=save_format, **save_kwargs)
 
     def _validate_generated_image(
         self,
@@ -498,6 +776,245 @@ class GenerativeImageRenderer:
         })
 
         return base64.b64decode(image_base64), usage
+
+
+def _resolve_fallback_canvas_size(size: str, surface: SurfaceMode) -> tuple[int, int]:
+    if "x" in size:
+        width_text, height_text = size.lower().split("x", 1)
+        if width_text.isdigit() and height_text.isdigit():
+            width = max(900, min(4096, int(width_text)))
+            height = max(640, min(4096, int(height_text)))
+            return width, height
+    if surface == "embedded-card":
+        return 1536, 1024
+    return 2048, 1152
+
+
+def _load_fallback_font(size: int, *, bold: bool = False) -> Any:
+    from PIL import ImageFont
+
+    candidates = [
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            if bold
+            else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        ),
+        (
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+            if bold
+            else "/System/Library/Fonts/Supplemental/Arial.ttf"
+        ),
+        "/Library/Fonts/Arial Bold.ttf" if bold else "/Library/Fonts/Arial.ttf",
+    ]
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return ImageFont.truetype(candidate, size=size)
+    try:
+        return ImageFont.truetype(
+            "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+            size=size,
+        )
+    except OSError:
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:  # pragma: no cover - older Pillow fallback
+            return ImageFont.load_default()
+
+
+def _draw_panel(draw: Any, box: list[int], *, accent: str) -> None:
+    draw.rounded_rectangle(box, radius=22, fill="#ffffff", outline="#d8e0e8", width=2)
+    x1, y1, _x2, y2 = box
+    draw.rounded_rectangle([x1, y1, x1 + 10, y2], radius=8, fill=accent)
+
+
+def _draw_wrapped_text(
+    *,
+    draw: Any,
+    xy: tuple[int, int],
+    text: Any,
+    font: Any,
+    fill: str,
+    max_width: int,
+    max_lines: int,
+    line_spacing: int,
+) -> int:
+    x, y = xy
+    lines = _wrap_text(draw=draw, text=str(text), font=font, max_width=max_width)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = _fit_text(draw=draw, text=lines[-1], font=font, max_width=max_width)
+
+    current_y = y
+    for line in lines:
+        draw.text((x, current_y), line, fill=fill, font=font)
+        bbox = draw.textbbox((x, current_y), line or "Ag", font=font)
+        current_y += (bbox[3] - bbox[1]) + line_spacing
+    return current_y
+
+
+def _wrap_text(*, draw: Any, text: str, font: Any, max_width: int) -> list[str]:
+    text = " ".join(text.split())
+    if not text:
+        return [""]
+
+    lines: list[str] = []
+    for paragraph in textwrap.wrap(
+        text,
+        width=160,
+        break_long_words=False,
+        replace_whitespace=True,
+        drop_whitespace=True,
+    ) or [""]:
+        current = ""
+        for word in paragraph.split():
+            candidate = f"{current} {word}".strip()
+            if draw.textlength(candidate, font=font) <= max_width or not current:
+                current = candidate
+                continue
+            lines.append(current)
+            current = word
+        if current:
+            lines.append(current)
+    return lines
+
+
+def _fit_text(*, draw: Any, text: str, font: Any, max_width: int) -> str:
+    suffix = "..."
+    text = text.rstrip()
+    while text and draw.textlength(text + suffix, font=font) > max_width:
+        text = text[:-1].rstrip()
+    return f"{text}{suffix}" if text else suffix
+
+
+def _truncate_text(text: Any, max_chars: int) -> str:
+    normalized = " ".join(str(text).split())
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[: max(0, max_chars - 3)].rstrip() + "..."
+
+
+def _build_source_snapshot_lines(
+    prompt_data: dict[str, Any],
+    analysis: VisualizationAnalysis,
+) -> list[str]:
+    lines: list[str] = []
+    rows = prompt_data.get("rows")
+    if isinstance(rows, list):
+        lines.append(f"Rows available: {len(rows)}")
+        for index, row in enumerate(rows[:4], start=1):
+            if isinstance(row, dict):
+                pairs = [
+                    f"{key}={_compact_snapshot_value(value)}"
+                    for key, value in list(row.items())[:4]
+                ]
+                lines.append(f"{index}. " + "; ".join(pairs))
+            else:
+                lines.append(f"{index}. {_compact_snapshot_value(row)}")
+    else:
+        for key, value in list(prompt_data.items())[:6]:
+            lines.append(f"{key}: {_summarize_snapshot_value(value)}")
+
+    for visual in analysis.recommended_visuals[:3]:
+        field_list = ", ".join(visual.fields[:4]) if visual.fields else "no fields specified"
+        lines.append(f"Requested visual: {visual.title} ({visual.kind}; {field_list})")
+
+    for warning in analysis.warnings[:2]:
+        lines.append(f"Warning: {warning}")
+
+    return lines or ["No compact source snapshot was available."]
+
+
+def _summarize_snapshot_value(value: Any) -> str:
+    if isinstance(value, list):
+        if not value:
+            return "empty list"
+        return f"{len(value)} item(s); first={_compact_snapshot_value(value[0])}"
+    if isinstance(value, dict):
+        keys = ", ".join(str(key) for key in list(value.keys())[:6])
+        return f"object keys: {keys}"
+    return _compact_snapshot_value(value)
+
+
+def _compact_snapshot_value(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, sort_keys=True, default=str)
+    else:
+        text = str(value)
+    return _truncate_text(text, 96)
+
+
+def _build_image_generation_fallback_validation(
+    *,
+    failure_reason: str,
+    previous_validation: FactualValidationResult | None,
+) -> FactualValidationResult:
+    prior_summary = (
+        f" Previous factual validation summary: {previous_validation.summary}"
+        if previous_validation is not None
+        else ""
+    )
+    return FactualValidationResult(
+        is_acceptable=False,
+        summary=(
+            "GPT Image did not return image bytes, so the CLI produced a local "
+            "fallback visual from the typed analysis and source snapshot."
+            f"{prior_summary}"
+        ),
+        issues=list(previous_validation.issues) if previous_validation is not None else [],
+        correction_instructions=(
+            "Use the local fallback artifact for immediate delivery, then retry GPT Image "
+            "generation when the transport issue is resolved. Failure reason: "
+            f"{_truncate_text(failure_reason, 240)}"
+        ),
+    )
+
+
+def _build_image_generation_fallback_disclaimer(*, failure_reason: str) -> str:
+    return (
+        "Disclaimer: GPT Image generation failed before producing an image, so this "
+        "artifact was rendered locally from the typed analysis and source data. It was "
+        "not reviewed by the vision fact-checker. Inspect visible values against the "
+        "source data before treating it as final. Failure reason: "
+        f"{_truncate_text(failure_reason, 220)}"
+    )
+
+
+def _build_image_generation_fallback_review_note(
+    *,
+    validation: FactualValidationResult,
+    disclaimer: str,
+) -> str:
+    lines = [
+        "# Image Generation Fallback Review",
+        "",
+        disclaimer,
+        "",
+        "Generation status: warning; local fallback image was produced.",
+        f"Review summary: {validation.summary}",
+        "",
+        "## Findings",
+        "",
+    ]
+    if validation.issues:
+        for index, issue in enumerate(validation.issues, start=1):
+            lines.extend([
+                f"{index}. [{issue.severity}] {issue.kind}",
+                f"   - Finding: {issue.description}",
+                f"   - Evidence: {issue.evidence}",
+            ])
+    else:
+        lines.append(
+            "- No image fact-check findings were available because GPT Image did not "
+            "produce bytes for vision validation."
+        )
+    lines.extend([
+        "",
+        "## Suggested Correction",
+        "",
+        validation.correction_instructions,
+        "",
+    ])
+    return "\n".join(lines)
 
 
 def _extract_images_api_result(response: Any) -> str | None:
