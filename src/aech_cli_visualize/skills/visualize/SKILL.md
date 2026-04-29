@@ -60,6 +60,9 @@ Useful options:
 - Do not assume visualize means charting. Numeric fields are optional.
 - For prose or arbitrary material, wrap it in JSON under `data.source_text`, `data.records`, or domain-specific keys and provide concrete `instructions`.
 - Keep only evidence the image should actually show. Use concise strings, short IDs, and high-signal fields.
+- In direct email or Teams channels, the task is not complete until the image exists and is listed in structured `outbound_attachments` using a session-relative path.
+- Do not reply with "I'm generating it", "I'm producing it now", or other progress-only text. Run `aech-cli-visualize image` first, then answer with the attachment and a short summary.
+- If the render fails, return a concrete failure report with the exact command, exit status, and stderr/stdout summary rather than a promise to keep working.
 - Treat factual validation warnings as user-visible caveats. Show the generated image only with the disclaimer and review findings from the CLI output/artifacts.
 - Always inspect the generated image before showing it to the user.
 - Use `--dry-run` when you need to audit the prompt and analysis without spending an image call.
