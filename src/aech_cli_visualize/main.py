@@ -90,7 +90,7 @@ def image_command(
     quality: Annotated[
         str,
         typer.Option("--quality", help="Image quality: low, medium, high, auto"),
-    ] = "medium",
+    ] = "low",
     format: Annotated[
         str,
         typer.Option("--format", help="Output format: png, jpeg, webp"),

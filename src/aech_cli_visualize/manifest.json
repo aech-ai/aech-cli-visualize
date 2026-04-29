@@ -79,7 +79,7 @@
           "name": "quality",
           "type": "option",
           "required": false,
-          "description": "Image quality. Values: low, medium, high, auto. Default: medium."
+          "description": "Image quality. Values: low, medium, high, auto. Default: low. Use high only when the requester explicitly prioritizes maximum fidelity over delivery reliability."
         },
         {
           "name": "format",

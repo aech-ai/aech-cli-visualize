@@ -51,6 +51,7 @@ aech-cli-visualize image work/crm/data/opportunities.jsonl \
   --title "Pipeline Action Map" \
   --instructions "Create a board-style visual that groups opportunities by stage, calls out blocked deals, and highlights next actions. Numeric charts are optional." \
   --analysis-mode auto \
+  --quality low \
   --generate
 ```
 
@@ -107,6 +108,7 @@ aech-cli-visualize image payload.json \
 | `--analysis-mode auto` | Default mode. Uses direct LLM analysis when compact enough and generated-code analysis for larger payloads. |
 | `--analysis-mode code` | Force generated-code analysis for larger structured datasets. |
 | `--analysis-mode precomputed` | Use an `analysis` object already supplied in the payload. |
+| `--quality` | Image quality. Default: `low` for live delivery reliability. Use `high` only when maximum fidelity matters more than transport reliability. |
 | `--max-data-chars` | Serialized data size allowed in direct model prompts. Default: `20000`. |
 | `--factual-validate / --no-factual-validate` | Validate generated image facts against the analysis/evidence. Default: enabled for generated images. |
 | `--factual-validation-model` | Vision-capable model for post-generation factual QA. Default: `gpt-5.4`. |

@@ -47,7 +47,7 @@ class ImageGenerationOptions:
     analysis_model: str = "gpt-5.4"
     analysis_mode: AnalysisMode = "auto"
     size: str = "2048x1152"
-    quality: ImageQuality = "medium"
+    quality: ImageQuality = "low"
     output_format: OutputFormat = "png"
     output_compression: int | None = None
     surface: SurfaceMode = "slide"

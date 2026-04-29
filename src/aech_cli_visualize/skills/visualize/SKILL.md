@@ -52,6 +52,7 @@ Useful options:
 - `--template-image`: use an existing screenshot or visual as a layout/style reference.
 - `--analysis-mode precomputed`: use when you already supplied a trusted `analysis` object.
 - `--analysis-mode code`: force generated-code analysis for larger structured payloads.
+- `--quality low`: use this for direct Teams/email delivery unless the requester explicitly asks for maximum image fidelity. Do not choose `--quality high` for retries after transport failures.
 - `--factual-validation-model`: override the post-generation reviewer model. Default: `gpt-5.4`.
 - `--factual-validate`: enabled by default; regenerates images with false, contradictory, or unsupported visible facts, then delivers with review warnings if factual findings remain.
 
@@ -61,6 +62,7 @@ Useful options:
 - For prose or arbitrary material, wrap it in JSON under `data.source_text`, `data.records`, or domain-specific keys and provide concrete `instructions`.
 - Keep only evidence the image should actually show. Use concise strings, short IDs, and high-signal fields.
 - In direct email or Teams channels, the task is not complete until either the image exists and is listed in structured `outbound_attachments` using a session-relative path, or stdout JSON reports `image_unavailable: true`.
+- For direct Teams/email requests, prefer `--quality low --image-timeout-seconds 180`; high quality at 2048x1152 is more likely to hit long-running GPT Image transport disconnects through worker egress.
 - Do not reply with "I'm generating it", "I'm producing it now", or other progress-only text. Run `aech-cli-visualize image` first, then answer with the attachment and a short summary.
 - If the render fails, return a concrete failure report with the exact command, exit status, and stderr/stdout summary rather than a promise to keep working.
 - Treat factual validation warnings as user-visible caveats. Show the generated image only with the disclaimer and factual review findings from the CLI output/artifacts.
